@@ -158,23 +158,7 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 
 ### Vulnerability Checklist
 
-| ✅ | Estado | Nombre | Descripción | Recomendación |
-|----|--------|--------|-------------|---------------|
-| ✅ | CRÍTICA | Confusión de nombres con crate vulnerable | El proyecto se llamaba `users` igual que un crate público vulnerable. Se cambió el nombre del crate a `crazytrip-user-service` | ✅ RESUELTA |
-| ✅ | CRÍTICA | SQL Injection | Uso de concatenación de strings en consultas SQL en lugar de parámetros preparados | ✅ RESUELTA |
-| ✅ | CRÍTICA | Exposición de Información Sensible | Manejo de errores que expone detalles internos del sistema | ✅ RESUELTA |
-| ✅ | ALTA | Rate Limiting Ineficaz | Rate limiting solo por IP, fácilmente bypassable | ✅ RESUELTA |
-| ✅ | ALTA | Falta de Validación JWT | No se valida el campo JTI para prevenir replay attacks | ✅ RESUELTA (Lista negra de JTI implementada)
-| ✅ | ALTA | Sesiones No Seguras | Campos de sesión vacíos o no inicializados correctamente | ✅ RESUELTA (Se inicializan `token_hash`, `refresh_token_hash`, `ip_address`, `user_agent`, `expires_at`) |
-| ✅ | MEDIA | CORS Mal Configurado | Permite credenciales con wildcard origins | ✅ RESUELTA (Se requiere origen explícito para `Access-Control-Allow-Credentials`, wildcard solo permitido sin credenciales) |
-| ✅ | MEDIA | Validación de Email Débil | Validación básica que permite emails inválidos | ✅ RESUELTA (Se usa `validator` para validación de emails en payloads) |
-| ✅ | MEDIA | Falta de Logging Seguro | Logging de información potencialmente sensible | ✅ RESUELTA (Se sanitizan y enmascaran campos sensibles antes de loggear) |
-| ✅ | MEDIA | Timeouts No Configurados | Sin timeouts configurados para requests | ✅ RESUELTA (Timeouts configurables para keep-alive, request read, and shutdown) |
-| ✅ | MEDIA | Headers de Seguridad Incompletos | Falta CSP, HSTS preload y otros headers importantes | ✅ RESUELTA (Se agregaron CSP, HSTS, Referrer-Policy y Permissions-Policy configurables) |
-| ❌ | MEDIA | Headers de Seguridad Incompletos | Falta CSP, HSTS preload y otros headers importantes | Agregar headers de seguridad adicionales |
-| ❌ | MEDIA | Dependencias Vulnerables | Librerías no mantenidas con bugs de seguridad | Remover dependencias no usadas o actualizar |
-| ❌ | BAJA | Secrets en Variables de Entorno | JWT_SECRET puede estar sin protección | Usar secret management seguro (Vault, AWS Secrets Manager) |
-| ❌ | BAJA | Configuración por Defecto Insegura | Valores por defecto demasiado permisivos | Valores más restrictivos por defecto |
+
 
 ### Security Status
 - 🔴 **CRÍTICO**: 2 vulnerabilidades requieren atención inmediata
