@@ -167,7 +167,7 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 | ✅ | ALTA | Falta de Validación JWT | No se valida el campo JTI para prevenir replay attacks | ✅ RESUELTA (Lista negra de JTI implementada)
 | ✅ | ALTA | Sesiones No Seguras | Campos de sesión vacíos o no inicializados correctamente | ✅ RESUELTA (Se inicializan `token_hash`, `refresh_token_hash`, `ip_address`, `user_agent`, `expires_at`) |
 | ✅ | MEDIA | CORS Mal Configurado | Permite credenciales con wildcard origins | ✅ RESUELTA (Se requiere origen explícito para `Access-Control-Allow-Credentials`, wildcard solo permitido sin credenciales) |
-| ❌ | MEDIA | Validación de Email Débil | Validación básica que permite emails inválidos | Usar regex robusto o librería de validación |
+| ✅ | MEDIA | Validación de Email Débil | Validación básica que permite emails inválidos | ✅ RESUELTA (Se usa `validator` para validación de emails en payloads) |
 | ❌ | MEDIA | Falta de Logging Seguro | Logging de información potencialmente sensible | Sanitizar datos antes de loggear |
 | ❌ | MEDIA | Timeouts No Configurados | Sin timeouts configurados para requests | Configurar timeouts apropiados |
 | ❌ | MEDIA | Headers de Seguridad Incompletos | Falta CSP, HSTS preload y otros headers importantes | Agregar headers de seguridad adicionales |
@@ -333,6 +333,26 @@ The two critical issues (SQL Injection and Exposure of Internal Errors) were rem
 - Exposure of Internal Errors: Internal error details are now persisted to an `error_logs` table and logged to rotating file logs; HTTP responses return generic messages in production.
 
 Recommended follow-ups: add integration tests to validate parameterization and consider periodic dependency scanning with `cargo-audit`.
+
+## Email Validation — Verification
+
+Email validation is now done using the `validator` crate which implements robust email format checks.
+
+To verify:
+
+1. Attempt to register with invalid email formats and ensure the API returns a validation error, for example:
+
+```bash
+curl -s -X POST http://127.0.0.1:8080/api/v1/auth/register \
+	-H "Content-Type: application/json" \
+	-d '{"email":"not-an-email","username":"u1","password":"Password123"}' | jq '.'
+```
+
+Expected: API returns an error indicating invalid email format.
+
+2. Register with a valid email to confirm normal operation.
+
+Automated tests can be added to assert allowed/disallowed formats as part of the test suite.
 
 ## CORS Configuration — Verification
 

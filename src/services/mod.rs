@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use chrono::{Duration, Utc};
 use uuid::Uuid;
+use validator::Validate;
 
 use crate::auth::AuthService;
 use crate::database::DatabaseService;
@@ -207,7 +208,9 @@ impl UserService {
 
     /// Validate registration request
     fn validate_registration_request(&self, req: &RegisterRequest) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.validate_email(&req.email)?;
+        // Use validator crate for robust email validation
+        req.validate()?;
+        // Additional business rules
         self.validate_username(&req.username)?;
         self.validate_password(&req.password)?;
         Ok(())
@@ -215,7 +218,10 @@ impl UserService {
 
     /// Validate login request
     fn validate_login_request(&self, req: &LoginRequest) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.validate_email(&req.email)?;
+        // Use validator crate for email validation
+        if !validator::validate_email(&req.email) {
+            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid email format"))));
+        }
         if req.password.is_empty() {
             return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Password is required"))));
         }
@@ -227,7 +233,7 @@ impl UserService {
         if email.is_empty() {
             return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Email is required"))));
         }
-        if !email.contains('@') || !email.contains('.') {
+        if !validator::validate_email(email) {
             return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid email format"))));
         }
         if email.len() > 254 {
