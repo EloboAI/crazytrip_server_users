@@ -27,6 +27,7 @@ pub async fn server_status() -> Result<HttpResponse> {
 
 /// Register user endpoint
 pub async fn register_user(
+    http_req: HttpRequest,
     req: web::Json<RegisterRequest>,
     user_service: web::Data<Arc<UserService>>,
 ) -> Result<HttpResponse> {
@@ -36,7 +37,11 @@ pub async fn register_user(
         return Ok(utils::response::validation_error_response(msgs));
     }
 
-    match user_service.register_user(r).await {
+    // Extract request metadata
+    let ip = http_req.peer_addr().map(|addr| addr.ip().to_string()).unwrap_or_else(|| "unknown".to_string());
+    let ua = http_req.headers().get("user-agent").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+
+    match user_service.register_user(r, &ip, ua.as_deref()).await {
         Ok(response) => Ok(utils::response::success_response(response)),
         Err(err) => {
             // Log internal error to DB and file
@@ -55,6 +60,7 @@ pub async fn register_user(
 
 /// Login user endpoint
 pub async fn login_user(
+    http_req: HttpRequest,
     req: web::Json<LoginRequest>,
     user_service: web::Data<Arc<UserService>>,
 ) -> Result<HttpResponse> {
@@ -64,7 +70,11 @@ pub async fn login_user(
         return Ok(utils::response::validation_error_response(msgs));
     }
 
-    match user_service.login_user(r).await {
+    // Extract request metadata
+    let ip = http_req.peer_addr().map(|addr| addr.ip().to_string()).unwrap_or_else(|| "unknown".to_string());
+    let ua = http_req.headers().get("user-agent").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+
+    match user_service.login_user(r, &ip, ua.as_deref()).await {
         Ok(response) => Ok(utils::response::success_response(response)),
         Err(err) => {
             // If it's a credentials issue, don't log as internal

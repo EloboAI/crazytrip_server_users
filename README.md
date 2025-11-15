@@ -165,7 +165,7 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 | ✅ | CRÍTICA | Exposición de Información Sensible | Manejo de errores que expone detalles internos del sistema | ✅ RESUELTA |
 | ✅ | ALTA | Rate Limiting Ineficaz | Rate limiting solo por IP, fácilmente bypassable | ✅ RESUELTA |
 | ✅ | ALTA | Falta de Validación JWT | No se valida el campo JTI para prevenir replay attacks | ✅ RESUELTA (Lista negra de JTI implementada)
-| ❌ | ALTA | Sesiones No Seguras | Campos de sesión vacíos o no inicializados correctamente | Inicializar correctamente todos los campos de sesión |
+| ✅ | ALTA | Sesiones No Seguras | Campos de sesión vacíos o no inicializados correctamente | ✅ RESUELTA (Se inicializan `token_hash`, `refresh_token_hash`, `ip_address`, `user_agent`, `expires_at`) |
 | ❌ | MEDIA | CORS Mal Configurado | Permite credenciales con wildcard origins | Lista explícita de orígenes permitidos |
 | ❌ | MEDIA | Validación de Email Débil | Validación básica que permite emails inválidos | Usar regex robusto o librería de validación |
 | ❌ | MEDIA | Falta de Logging Seguro | Logging de información potencialmente sensible | Sanitizar datos antes de loggear |
@@ -333,6 +333,29 @@ The two critical issues (SQL Injection and Exposure of Internal Errors) were rem
 - Exposure of Internal Errors: Internal error details are now persisted to an `error_logs` table and logged to rotating file logs; HTTP responses return generic messages in production.
 
 Recommended follow-ups: add integration tests to validate parameterization and consider periodic dependency scanning with `cargo-audit`.
+
+## Session Initialization — Verification
+
+Sessions are now created with all required fields populated (hashed tokens, IP address, user-agent, expiry timestamps). To verify locally:
+
+1. Create a new user (unique email) and login to obtain `access_token` and `refresh_token` (see Token Revocation section).
+2. Inspect the `sessions` table in Postgres to verify the inserted row has:
+	- `token_hash` non-empty
+	- `refresh_token_hash` non-empty
+	- `ip_address` set to client IP
+	- `user_agent` set (if provided)
+	- `expires_at` and `refresh_expires_at` correctly set in the future
+
+Example using `psql` (adjust connection params):
+
+```sql
+SELECT id, user_id, token_hash IS NOT NULL AS has_token_hash, refresh_token_hash IS NOT NULL AS has_refresh_hash, ip_address, user_agent, expires_at, refresh_expires_at, is_active
+FROM sessions
+ORDER BY created_at DESC
+LIMIT 5;
+```
+
+If any field is empty, please rerun the test with a fresh user email to avoid collisions with previously created sessions.
 
 ## Token Revocation (JTI) — Verification
 

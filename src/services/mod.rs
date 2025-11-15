@@ -18,7 +18,7 @@ impl UserService {
     }
 
     /// Register a new user
-    pub async fn register_user(&self, req: RegisterRequest) -> Result<ApiResponse<AuthResponse>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn register_user(&self, req: RegisterRequest, ip_address: &str, user_agent: Option<&str>) -> Result<ApiResponse<AuthResponse>, Box<dyn std::error::Error + Send + Sync>> {
         // Validate input
         self.validate_registration_request(&req)?;
 
@@ -36,19 +36,10 @@ impl UserService {
         // Generate tokens
         let tokens = self.auth.generate_tokens(&user)?;
 
-        // Create session
-        let session = Session {
-            id: Uuid::new_v4(),
-            user_id: user.id,
-            token_hash: "".to_string(),
-            refresh_token_hash: Some("".to_string()),
-            ip_address: "".to_string(),
-            user_agent: None,
-            expires_at: Utc::now() + Duration::hours(24), // 24 hours
-            refresh_expires_at: Some(Utc::now() + Duration::hours(24 * 7)), // 7 days
-            is_active: true,
-            created_at: Utc::now(),
-        };
+        // Build session using AuthService helper and populate token hashes
+        let mut session = self.auth.create_session(&user, ip_address, user_agent);
+        session.token_hash = self.auth.hash_token(&tokens.access_token)?;
+        session.refresh_token_hash = Some(self.auth.hash_token(&tokens.refresh_token)?);
 
         self.db.create_session(&session).await?;
 
@@ -56,7 +47,7 @@ impl UserService {
     }
 
     /// Authenticate user
-    pub async fn login_user(&self, req: LoginRequest) -> Result<ApiResponse<AuthResponse>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn login_user(&self, req: LoginRequest, ip_address: &str, user_agent: Option<&str>) -> Result<ApiResponse<AuthResponse>, Box<dyn std::error::Error + Send + Sync>> {
         // Validate input
         self.validate_login_request(&req)?;
 
@@ -82,19 +73,10 @@ impl UserService {
         // Generate tokens
         let tokens = self.auth.generate_tokens(&user)?;
 
-        // Create session
-        let session = Session {
-            id: Uuid::new_v4(),
-            user_id: user.id,
-            token_hash: "".to_string(),
-            refresh_token_hash: Some("".to_string()),
-            ip_address: "".to_string(),
-            user_agent: None,
-            expires_at: Utc::now() + Duration::hours(24),
-            refresh_expires_at: Some(Utc::now() + Duration::hours(24 * 7)),
-            is_active: true,
-            created_at: Utc::now(),
-        };
+        // Build session using AuthService helper and populate token hashes
+        let mut session = self.auth.create_session(&user, ip_address, user_agent);
+        session.token_hash = self.auth.hash_token(&tokens.access_token)?;
+        session.refresh_token_hash = Some(self.auth.hash_token(&tokens.refresh_token)?);
 
         self.db.create_session(&session).await?;
 
