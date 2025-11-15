@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use crazytrip_user_service::database::DatabaseService;
 use crazytrip_user_service::auth::AuthService;
-use crazytrip_user_service::services::UserService;
-use crazytrip_user_service::models::{RegisterRequest, LoginRequest};
 use crazytrip_user_service::config::AuthConfig;
+use crazytrip_user_service::database::DatabaseService;
+use crazytrip_user_service::models::{LoginRequest, RegisterRequest};
+use crazytrip_user_service::services::UserService;
 
 #[tokio::test]
 async fn refresh_token_replay_should_be_prevented() {
@@ -32,7 +32,12 @@ async fn refresh_token_replay_should_be_prevented() {
     db.init_schema().await.expect("init schema");
 
     let db_arc = Arc::new(db);
-    let auth_cfg = AuthConfig { jwt_secret: "test-secret".to_string(), jwt_expiration_hours: 24, refresh_token_expiration_days: 7, bcrypt_cost: 4 };
+    let auth_cfg = AuthConfig {
+        jwt_secret: "test-secret".to_string(),
+        jwt_expiration_hours: 24,
+        refresh_token_expiration_days: 7,
+        bcrypt_cost: 4,
+    };
     let auth = Arc::new(AuthService::new(auth_cfg));
 
     let user_service = UserService::new(Arc::clone(&db_arc), Arc::clone(&auth));
@@ -44,21 +49,37 @@ async fn refresh_token_replay_should_be_prevented() {
         password: "TestPass123".to_string(),
     };
 
-    let _ = user_service.register_user(register, "127.0.0.1", Some("test-agent")).await.expect("register");
+    let _ = user_service
+        .register_user(register, "127.0.0.1", Some("test-agent"))
+        .await
+        .expect("register");
 
     // Simulate login to get a refresh token
     // For simplicity reuse login_user flow
-    let login = LoginRequest { email: "integration_test@example.com".to_string(), password: "TestPass123".to_string() };
+    let login = LoginRequest {
+        email: "integration_test@example.com".to_string(),
+        password: "TestPass123".to_string(),
+    };
 
-    let auth_resp = user_service.login_user(login, "127.0.0.1", Some("test-agent")).await.expect("login");
+    let auth_resp = user_service
+        .login_user(login, "127.0.0.1", Some("test-agent"))
+        .await
+        .expect("login");
     let tokens = auth_resp.data.expect("auth data");
     let refresh = tokens.refresh_token.clone();
 
     // First refresh should succeed
-    let first = user_service.refresh_token(&refresh, "127.0.0.1", Some("test-agent")).await;
+    let first = user_service
+        .refresh_token(&refresh, "127.0.0.1", Some("test-agent"))
+        .await;
     assert!(first.is_ok(), "first refresh should succeed");
 
     // Second refresh with the same token should be rejected
-    let second = user_service.refresh_token(&refresh, "127.0.0.1", Some("test-agent")).await;
-    assert!(second.is_err(), "second refresh should be rejected as replay");
+    let second = user_service
+        .refresh_token(&refresh, "127.0.0.1", Some("test-agent"))
+        .await;
+    assert!(
+        second.is_err(),
+        "second refresh should be rejected as replay"
+    );
 }

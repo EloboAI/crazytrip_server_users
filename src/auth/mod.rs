@@ -15,8 +15,8 @@ pub struct Claims {
     pub email: String,
     pub username: String,
     pub role: String,
-    pub exp: i64, // Expiration time
-    pub iat: i64, // Issued at
+    pub exp: i64,    // Expiration time
+    pub iat: i64,    // Issued at
     pub iss: String, // Issuer
     pub jti: String, // JWT ID
 }
@@ -24,7 +24,7 @@ pub struct Claims {
 /// Refresh token claims
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RefreshClaims {
-    pub sub: String, // User ID
+    pub sub: String,      // User ID
     pub token_id: String, // Unique token identifier
     pub exp: i64,
     pub iat: i64,
@@ -62,7 +62,10 @@ impl AuthService {
     }
 
     /// Generate access and refresh tokens for a user and return AuthResponse
-    pub fn generate_tokens(&self, user: &User) -> Result<AuthResponse, jsonwebtoken::errors::Error> {
+    pub fn generate_tokens(
+        &self,
+        user: &User,
+    ) -> Result<AuthResponse, jsonwebtoken::errors::Error> {
         let now = Utc::now();
         let token_id = Uuid::new_v4().to_string();
 
@@ -115,7 +118,10 @@ impl AuthService {
     }
 
     /// Validate and decode an access token
-    pub fn validate_access_token(&self, token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+    pub fn validate_access_token(
+        &self,
+        token: &str,
+    ) -> Result<Claims, jsonwebtoken::errors::Error> {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.set_issuer(&["crazytrip-users"]);
         validation.set_required_spec_claims(&["exp", "sub", "iat"]);
@@ -125,7 +131,10 @@ impl AuthService {
     }
 
     /// Validate and decode a refresh token
-    pub fn validate_refresh_token(&self, token: &str) -> Result<RefreshClaims, jsonwebtoken::errors::Error> {
+    pub fn validate_refresh_token(
+        &self,
+        token: &str,
+    ) -> Result<RefreshClaims, jsonwebtoken::errors::Error> {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.set_issuer(&["crazytrip-users"]);
         validation.set_required_spec_claims(&["exp", "sub", "iat"]);
@@ -149,7 +158,10 @@ impl AuthService {
     }
 
     /// Hash a token for storage (using SHA-256)
-    pub fn hash_token(&self, token: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn hash_token(
+        &self,
+        token: &str,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(token.as_bytes());
@@ -158,7 +170,12 @@ impl AuthService {
 
     /// Generate a secure session
     #[allow(dead_code)]
-    pub fn create_session(&self, user: &User, ip_address: &str, user_agent: Option<&str>) -> Session {
+    pub fn create_session(
+        &self,
+        user: &User,
+        ip_address: &str,
+        user_agent: Option<&str>,
+    ) -> Session {
         let now = Utc::now();
         let session_id = Uuid::new_v4();
 
@@ -170,7 +187,9 @@ impl AuthService {
             ip_address: ip_address.to_string(),
             user_agent: user_agent.map(|s| s.to_string()),
             expires_at: now + Duration::hours(self.config.jwt_expiration_hours),
-            refresh_expires_at: Some(now + Duration::days(self.config.refresh_token_expiration_days)),
+            refresh_expires_at: Some(
+                now + Duration::days(self.config.refresh_token_expiration_days),
+            ),
             is_active: true,
             created_at: now,
         }
@@ -264,7 +283,10 @@ impl RateLimitStore {
         // TTL for removing entire keys if they remain inactive for long time
         let ttl = (window_seconds as i64) * 4;
 
-        let user_requests = self.requests.entry(key.to_string()).or_insert_with(Vec::new);
+        let user_requests = self
+            .requests
+            .entry(key.to_string())
+            .or_insert_with(Vec::new);
 
         // Remove old requests outside the sliding window
         user_requests.retain(|&timestamp| timestamp > window_start);

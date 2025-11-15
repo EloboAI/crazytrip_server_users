@@ -1,9 +1,9 @@
+pub mod auth;
 pub mod config;
 pub mod database;
-pub mod auth;
-pub mod services;
-pub mod models;
 pub mod handlers;
+pub mod models;
+pub mod services;
 pub mod utils;
 
 // Note: avoid glob re-exports to prevent ambiguous symbol re-exports

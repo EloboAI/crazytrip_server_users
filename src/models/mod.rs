@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use validator::Validate;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use validator::Validate;
 
 /// User model with security considerations
 #[derive(Debug, Clone, Serialize, Deserialize)]

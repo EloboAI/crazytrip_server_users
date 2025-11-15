@@ -10,8 +10,7 @@ use std::future::{ready, Ready};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::auth::{AuthService, RateLimitStore, extract_token_from_request};
-
+use crate::auth::{extract_token_from_request, AuthService, RateLimitStore};
 
 /// Authentication middleware
 pub struct AuthMiddleware {
@@ -64,7 +63,10 @@ where
         Box::pin(async move {
             // Skip auth for certain public routes
             let path = req.path();
-            if path.starts_with("/health") || path.starts_with("/api/v1/status") || path.starts_with("/api/v1/auth") {
+            if path.starts_with("/health")
+                || path.starts_with("/api/v1/status")
+                || path.starts_with("/api/v1/auth")
+            {
                 return service.call(req).await;
             }
 
@@ -168,7 +170,8 @@ where
                     if is_allowed_exact {
                         headers.insert(
                             header::ACCESS_CONTROL_ALLOW_ORIGIN,
-                            header::HeaderValue::from_str(origin_str).unwrap_or_else(|_| header::HeaderValue::from_static("")),
+                            header::HeaderValue::from_str(origin_str)
+                                .unwrap_or_else(|_| header::HeaderValue::from_static("")),
                         );
 
                         // Only send credentials header when origin was explicitly allowed
@@ -180,7 +183,7 @@ where
                         // Wildcard present but origin not explicitly listed: allow but DO NOT send credentials
                         headers.insert(
                             header::ACCESS_CONTROL_ALLOW_ORIGIN,
-                            header::HeaderValue::from_static("*")
+                            header::HeaderValue::from_static("*"),
                         );
                     }
                 }
@@ -259,7 +262,9 @@ where
 
         Box::pin(async move {
             // Get client IP for rate limiting
-            let ip = req.connection_info().peer_addr()
+            let ip = req
+                .connection_info()
+                .peer_addr()
                 .unwrap_or("unknown")
                 .to_string();
 
@@ -281,13 +286,19 @@ where
                     } else {
                         // If token can't be validated, include token prefix to still rate limit
                         let short = &token.as_bytes()[..std::cmp::min(8, token.len())];
-                        let hex_str = short.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                        let hex_str = short
+                            .iter()
+                            .map(|b| format!("{:02x}", b))
+                            .collect::<String>();
                         key_parts.push(format!("token:{}", hex_str));
                     }
                 } else {
                     // no auth service available: use token prefix
                     let short = &token.as_bytes()[..std::cmp::min(8, token.len())];
-                    let hex_str = short.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                    let hex_str = short
+                        .iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<String>();
                     key_parts.push(format!("token:{}", hex_str));
                 }
             }
@@ -302,8 +313,9 @@ where
             // Check rate limit
             let mut store = store.lock().await;
             if !store.is_allowed(&key, max_requests, window_seconds) {
-                let response = HttpResponse::TooManyRequests()
-                    .json(serde_json::json!({"error": "Rate limit exceeded. Please try again later."}));
+                let response = HttpResponse::TooManyRequests().json(
+                    serde_json::json!({"error": "Rate limit exceeded. Please try again later."}),
+                );
                 return Ok(req.into_response(response));
             }
 
@@ -471,13 +483,17 @@ where
 
             headers.insert(
                 header::STRICT_TRANSPORT_SECURITY,
-                header::HeaderValue::from_str(&hsts_value).unwrap_or_else(|_| header::HeaderValue::from_static("max-age=31536000; includeSubDomains")),
+                header::HeaderValue::from_str(&hsts_value).unwrap_or_else(|_| {
+                    header::HeaderValue::from_static("max-age=31536000; includeSubDomains")
+                }),
             );
 
             // Referrer policy from config
             headers.insert(
                 header::REFERRER_POLICY,
-                header::HeaderValue::from_str(&referrer_policy).unwrap_or_else(|_| header::HeaderValue::from_static("strict-origin-when-cross-origin")),
+                header::HeaderValue::from_str(&referrer_policy).unwrap_or_else(|_| {
+                    header::HeaderValue::from_static("strict-origin-when-cross-origin")
+                }),
             );
 
             // Content Security Policy (optional)
@@ -485,7 +501,9 @@ where
                 if !csp.trim().is_empty() {
                     headers.insert(
                         header::HeaderName::from_static("content-security-policy"),
-                        header::HeaderValue::from_str(csp).unwrap_or_else(|_| header::HeaderValue::from_static("default-src 'self'")),
+                        header::HeaderValue::from_str(csp).unwrap_or_else(|_| {
+                            header::HeaderValue::from_static("default-src 'self'")
+                        }),
                     );
                 }
             }
@@ -495,7 +513,8 @@ where
                 if !pp.trim().is_empty() {
                     headers.insert(
                         header::HeaderName::from_static("permissions-policy"),
-                        header::HeaderValue::from_str(pp).unwrap_or_else(|_| header::HeaderValue::from_static("geolocation=()")),
+                        header::HeaderValue::from_str(pp)
+                            .unwrap_or_else(|_| header::HeaderValue::from_static("geolocation=()")),
                     );
                 }
             }
@@ -546,7 +565,11 @@ where
         let start_time = std::time::Instant::now();
         let method = req.method().clone();
         let uri = req.uri().clone();
-        let remote_addr = req.connection_info().peer_addr().unwrap_or("unknown").to_string();
+        let remote_addr = req
+            .connection_info()
+            .peer_addr()
+            .unwrap_or("unknown")
+            .to_string();
 
         Box::pin(async move {
             let result = service.call(req).await;
@@ -556,13 +579,21 @@ where
                 Ok(res) => {
                     log::info!(
                         "Request completed: {} {} {} {}ms from {}",
-                        method, uri, res.status().as_u16(), duration.as_millis(), remote_addr
+                        method,
+                        uri,
+                        res.status().as_u16(),
+                        duration.as_millis(),
+                        remote_addr
                     );
                 }
                 Err(err) => {
                     log::error!(
                         "Request failed: {} {} {} {}ms from {}",
-                        method, uri, err, duration.as_millis(), remote_addr
+                        method,
+                        uri,
+                        err,
+                        duration.as_millis(),
+                        remote_addr
                     );
                 }
             }

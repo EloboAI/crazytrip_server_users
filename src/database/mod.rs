@@ -1,6 +1,7 @@
+use std::net::{IpAddr, Ipv4Addr};
+
 use chrono::{DateTime, Utc};
 use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
-
 
 use tokio_postgres::NoTls;
 use uuid::Uuid;
@@ -18,7 +19,9 @@ pub struct DatabaseService {
 
 impl DatabaseService {
     /// Create a new database service with connection pool
-    pub async fn new(config: &DatabaseConfig) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn new(
+        config: &DatabaseConfig,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut cfg = Config::new();
         cfg.url = Some(config.url.clone());
         cfg.manager = Some(ManagerConfig {
@@ -37,7 +40,9 @@ impl DatabaseService {
     }
 
     /// Get a database client from the pool
-    pub async fn get_client(&self) -> Result<deadpool_postgres::Client, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_client(
+        &self,
+    ) -> Result<deadpool_postgres::Client, Box<dyn std::error::Error + Send + Sync>> {
         Ok(self.pool.get().await?)
     }
 
@@ -47,7 +52,10 @@ impl DatabaseService {
         let client = self.get_client().await?;
 
         // Ensure pgcrypto extension for gen_random_uuid() is present
-        client.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto", &[]).await.ok();
+        client
+            .execute("CREATE EXTENSION IF NOT EXISTS pgcrypto", &[])
+            .await
+            .ok();
 
         // Create users table
         client.execute("\
@@ -71,7 +79,9 @@ impl DatabaseService {
         ", &[]).await?;
 
         // Create sessions table (indexes created separately)
-        client.execute("\
+        client
+            .execute(
+                "\
             CREATE TABLE IF NOT EXISTS sessions (\
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
                 user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\
@@ -84,16 +94,41 @@ impl DatabaseService {
                 is_active BOOLEAN NOT NULL DEFAULT true,\
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\
             )\
-        ", &[]).await?;
+        ",
+                &[],
+            )
+            .await?;
 
         // Create indexes for performance
-        client.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)", &[]).await?;
-        client.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)", &[]).await?;
-        client.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)", &[]).await?;
-        client.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)", &[]).await?;
+        client
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+                &[],
+            )
+            .await?;
+        client
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)",
+                &[],
+            )
+            .await?;
+        client
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)",
+                &[],
+            )
+            .await?;
+        client
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)",
+                &[],
+            )
+            .await?;
 
         // Create error_logs table for server-side error auditing
-        client.execute("\
+        client
+            .execute(
+                "\
             CREATE TABLE IF NOT EXISTS error_logs (\
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
                 occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\
@@ -104,22 +139,50 @@ impl DatabaseService {
                 request_id VARCHAR(100),\
                 user_id UUID NULL\
             )\
-        ", &[]).await?;
+        ",
+                &[],
+            )
+            .await?;
 
-        client.execute("CREATE INDEX IF NOT EXISTS idx_error_logs_severity ON error_logs(severity)", &[]).await?;
-        client.execute("CREATE INDEX IF NOT EXISTS idx_error_logs_occurred_at ON error_logs(occurred_at)", &[]).await?;
-        client.execute("CREATE INDEX IF NOT EXISTS idx_error_logs_category ON error_logs(category)", &[]).await?;
+        client
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_error_logs_severity ON error_logs(severity)",
+                &[],
+            )
+            .await?;
+        client
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_error_logs_occurred_at ON error_logs(occurred_at)",
+                &[],
+            )
+            .await?;
+        client
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_error_logs_category ON error_logs(category)",
+                &[],
+            )
+            .await?;
 
         // Create revoked_tokens table for token revocation (prevent replay attacks)
-        client.execute("\
+        client
+            .execute(
+                "\
             CREATE TABLE IF NOT EXISTS revoked_tokens (\
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
                 jti VARCHAR(100) UNIQUE NOT NULL,\
                 revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\
                 expires_at TIMESTAMPTZ NULL\
             )\
-        ", &[]).await?;
-        client.execute("CREATE INDEX IF NOT EXISTS idx_revoked_tokens_jti ON revoked_tokens(jti)", &[]).await?;
+        ",
+                &[],
+            )
+            .await?;
+        client
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_revoked_tokens_jti ON revoked_tokens(jti)",
+                &[],
+            )
+            .await?;
         client.execute("CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires_at ON revoked_tokens(expires_at)", &[]).await?;
 
         log::info!("Database schema initialized");
@@ -127,7 +190,11 @@ impl DatabaseService {
     }
 
     /// Revoke a token by JTI and optional expiry time
-    pub async fn revoke_token(&self, jti: &str, expires_at: Option<DateTime<Utc>>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn revoke_token(
+        &self,
+        jti: &str,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
         client.execute("\
@@ -138,57 +205,96 @@ impl DatabaseService {
     }
 
     /// Check if a token JTI is revoked
-    pub async fn is_token_revoked(&self, jti: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn is_token_revoked(
+        &self,
+        jti: &str,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        let row = client.query_opt("SELECT jti FROM revoked_tokens WHERE jti = $1 LIMIT 1", &[&jti]).await?;
+        let row = client
+            .query_opt(
+                "SELECT jti FROM revoked_tokens WHERE jti = $1 LIMIT 1",
+                &[&jti],
+            )
+            .await?;
         Ok(row.is_some())
     }
 
     /// Insert an error log record
-    pub async fn insert_error_log(&self, severity: &str, category: &str, message: &str, details: Option<serde_json::Value>, request_id: Option<&str>, user_id: Option<Uuid>) -> Result<Uuid, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn insert_error_log(
+        &self,
+        severity: &str,
+        category: &str,
+        message: &str,
+        details: Option<serde_json::Value>,
+        request_id: Option<&str>,
+        user_id: Option<Uuid>,
+    ) -> Result<Uuid, Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
         let id = Uuid::new_v4();
-        client.execute("\
+        client
+            .execute(
+                "\
             INSERT INTO error_logs (id, severity, category, message, details, request_id, user_id)\
             VALUES ($1, $2, $3, $4, $5, $6, $7)\
-        ", &[
-            &id,
-            &severity,
-            &category,
-            &message,
-            &details,
-            &request_id,
-            &user_id,
-        ]).await?;
+        ",
+                &[
+                    &id,
+                    &severity,
+                    &category,
+                    &message,
+                    &details,
+                    &request_id,
+                    &user_id,
+                ],
+            )
+            .await?;
 
         Ok(id)
     }
 
     /// Create a new user
-    pub async fn create_user(&self, email: &str, username: &str, password_hash: &str) -> Result<User, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn create_user(
+        &self,
+        email: &str,
+        username: &str,
+        password_hash: &str,
+    ) -> Result<User, Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        let row = client.query_one("
+        let row = client
+            .query_one(
+                "
             INSERT INTO users (email, username, password_hash)
             VALUES ($1, $2, $3)
             RETURNING id, email, username, password_hash, role, is_active, is_email_verified,
                       created_at, updated_at, last_login_at, login_attempts, locked_until
-        ", &[&email, &username, &password_hash]).await?;
+        ",
+                &[&email, &username, &password_hash],
+            )
+            .await?;
 
         Ok(Self::row_to_user(&row))
     }
 
     /// Get user by ID
-    pub async fn get_user_by_id(&self, id: &Uuid) -> Result<Option<User>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_user_by_id(
+        &self,
+        id: &Uuid,
+    ) -> Result<Option<User>, Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        let rows = client.query("
+        let rows = client
+            .query(
+                "
             SELECT id, email, username, password_hash, role, is_active, is_email_verified,
                    created_at, updated_at, last_login_at, login_attempts, locked_until
             FROM users WHERE id = $1
-        ", &[id]).await?;
+        ",
+                &[id],
+            )
+            .await?;
 
         if rows.is_empty() {
             return Ok(None);
@@ -198,14 +304,22 @@ impl DatabaseService {
     }
 
     /// Get user by email
-    pub async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_user_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Option<User>, Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        let rows = client.query("
+        let rows = client
+            .query(
+                "
             SELECT id, email, username, password_hash, role, is_active, is_email_verified,
                    created_at, updated_at, last_login_at, login_attempts, locked_until
             FROM users WHERE email = $1
-        ", &[&email]).await?;
+        ",
+                &[&email],
+            )
+            .await?;
 
         if rows.is_empty() {
             return Ok(None);
@@ -216,80 +330,129 @@ impl DatabaseService {
 
     /// Update user login info
     #[allow(dead_code)]
-    pub async fn update_user_login(&self, user_id: &Uuid, _ip_address: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn update_user_login(
+        &self,
+        user_id: &Uuid,
+        _ip_address: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        client.execute("
+        client
+            .execute(
+                "
             UPDATE users
             SET last_login_at = NOW(), login_attempts = 0, locked_until = NULL, updated_at = NOW()
             WHERE id = $1
-        ", &[user_id]).await?;
+        ",
+                &[user_id],
+            )
+            .await?;
 
         Ok(())
     }
 
     /// Increment login attempts
     #[allow(dead_code)]
-    pub async fn increment_login_attempts(&self, user_id: &Uuid) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn increment_login_attempts(
+        &self,
+        user_id: &Uuid,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        client.execute("
+        client
+            .execute(
+                "
             UPDATE users
             SET login_attempts = login_attempts + 1, updated_at = NOW()
             WHERE id = $1
-        ", &[user_id]).await?;
+        ",
+                &[user_id],
+            )
+            .await?;
 
         Ok(())
     }
 
     /// Lock user account
     #[allow(dead_code)]
-    pub async fn lock_user_account(&self, user_id: &Uuid, locked_until: DateTime<Utc>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn lock_user_account(
+        &self,
+        user_id: &Uuid,
+        locked_until: DateTime<Utc>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        client.execute("
+        client
+            .execute(
+                "
             UPDATE users
             SET locked_until = $2, updated_at = NOW()
             WHERE id = $1
-        ", &[user_id, &locked_until]).await?;
+        ",
+                &[user_id, &locked_until],
+            )
+            .await?;
 
         Ok(())
     }
 
     /// Create a new session
-    pub async fn create_session(&self, session: &Session) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn create_session(
+        &self,
+        session: &Session,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        client.execute("
+        let refresh_token_hash = session.refresh_token_hash.as_deref();
+        let user_agent = session.user_agent.as_deref();
+        let ip_address: IpAddr = session
+            .ip_address
+            .parse()
+            .unwrap_or_else(|_| IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+
+        client
+            .execute(
+                "
             INSERT INTO sessions (id, user_id, token_hash, refresh_token_hash, ip_address,
                                 user_agent, expires_at, refresh_expires_at, is_active)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        ", &[
-            &session.id,
-            &session.user_id,
-            &session.token_hash,
-            &session.refresh_token_hash,
-            &session.ip_address,
-            &session.user_agent,
-            &session.expires_at,
-            &session.refresh_expires_at,
-            &session.is_active,
-        ]).await?;
+        ",
+                &[
+                    &session.id,
+                    &session.user_id,
+                    &session.token_hash,
+                    &refresh_token_hash,
+                    &ip_address,
+                    &user_agent,
+                    &session.expires_at,
+                    &session.refresh_expires_at,
+                    &session.is_active,
+                ],
+            )
+            .await?;
 
         Ok(())
     }
 
     /// Get session by token hash
     #[allow(dead_code)]
-    pub async fn get_session_by_token(&self, token_hash: &str) -> Result<Option<Session>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_session_by_token(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<Session>, Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        let rows = client.query("
+        let rows = client
+            .query(
+                "
             SELECT id, user_id, token_hash, refresh_token_hash, ip_address, user_agent,
                    expires_at, refresh_expires_at, is_active, created_at
             FROM sessions
             WHERE token_hash = $1 AND is_active = true AND expires_at > NOW()
-        ", &[&token_hash]).await?;
+        ",
+                &[&token_hash],
+            )
+            .await?;
 
         if rows.is_empty() {
             return Ok(None);
@@ -299,29 +462,47 @@ impl DatabaseService {
     }
 
     /// Invalidate session
-    pub async fn invalidate_session(&self, token_hash: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn invalidate_session(
+        &self,
+        token_hash: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        client.execute("
+        client
+            .execute(
+                "
             UPDATE sessions SET is_active = false WHERE token_hash = $1
-        ", &[&token_hash]).await?;
+        ",
+                &[&token_hash],
+            )
+            .await?;
 
         Ok(())
     }
 
     /// Invalidate all user sessions
-    pub async fn invalidate_user_sessions(&self, user_id: &Uuid) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn invalidate_user_sessions(
+        &self,
+        user_id: &Uuid,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        client.execute("
+        client
+            .execute(
+                "
             UPDATE sessions SET is_active = false WHERE user_id = $1
-        ", &[user_id]).await?;
+        ",
+                &[user_id],
+            )
+            .await?;
 
         Ok(())
     }
 
     /// Clean up expired sessions
-    pub async fn cleanup_expired_sessions(&self) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn cleanup_expired_sessions(
+        &self,
+    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
         let query = "DELETE FROM sessions WHERE expires_at < NOW() RETURNING id";
@@ -339,45 +520,76 @@ impl DatabaseService {
     }
 
     /// Get active session count for a user
-    pub async fn get_active_session_count(&self, user_id: &Uuid) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_active_session_count(
+        &self,
+        user_id: &Uuid,
+    ) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        let row = client.query_one("
+        let row = client
+            .query_one(
+                "
             SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND is_active = true
-        ", &[user_id]).await?;
+        ",
+                &[user_id],
+            )
+            .await?;
 
         Ok(row.get(0))
     }
 
     /// Invalidate all sessions for a user except the current one
-    pub async fn invalidate_other_sessions(&self, user_id: &Uuid, current_session_id: &Uuid) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn invalidate_other_sessions(
+        &self,
+        user_id: &Uuid,
+        current_session_id: &Uuid,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        client.execute("
+        client
+            .execute(
+                "
             UPDATE sessions SET is_active = false WHERE user_id = $1 AND id != $2
-        ", &[user_id, current_session_id]).await?;
+        ",
+                &[user_id, current_session_id],
+            )
+            .await?;
 
         Ok(())
     }
 
     /// Invalidate session by refresh token hash
-    pub async fn invalidate_session_by_refresh_token_hash(&self, refresh_token_hash: &str) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn invalidate_session_by_refresh_token_hash(
+        &self,
+        refresh_token_hash: &str,
+    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        let result = client.execute("
+        let result = client
+            .execute(
+                "
             UPDATE sessions SET is_active = false WHERE refresh_token_hash = $1
-        ", &[&refresh_token_hash]).await?;
+        ",
+                &[&refresh_token_hash],
+            )
+            .await?;
 
         Ok(result)
     }
 
     /// Invalidate session by access token hash
-    pub async fn invalidate_session_by_token_hash(&self, token_hash: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn invalidate_session_by_token_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.invalidate_session(token_hash).await
     }
 
     /// Update user information
-    pub async fn update_user(&self, user: &User) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn update_user(
+        &self,
+        user: &User,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
         let role_str = match user.role {
@@ -386,47 +598,66 @@ impl DatabaseService {
             UserRole::User => "User",
         };
 
-        client.execute("
+        client
+            .execute(
+                "
             UPDATE users
             SET email = $2, username = $3, password_hash = $4, role = $5,
                 is_active = $6, is_email_verified = $7, updated_at = $8,
                 last_login_at = $9, login_attempts = $10, locked_until = $11
             WHERE id = $1
-        ", &[
-            &user.id,
-            &user.email,
-            &user.username,
-            &user.password_hash,
-            &role_str,
-            &user.is_active,
-            &user.is_email_verified,
-            &user.updated_at,
-            &user.last_login_at,
-            &user.login_attempts,
-            &user.locked_until,
-        ]).await?;
+        ",
+                &[
+                    &user.id,
+                    &user.email,
+                    &user.username,
+                    &user.password_hash,
+                    &role_str,
+                    &user.is_active,
+                    &user.is_email_verified,
+                    &user.updated_at,
+                    &user.last_login_at,
+                    &user.login_attempts,
+                    &user.locked_until,
+                ],
+            )
+            .await?;
 
         Ok(())
     }
 
     /// Deactivate user account
-    pub async fn deactivate_user(&self, user_id: Uuid) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn deactivate_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        client.execute("
+        client
+            .execute(
+                "
             UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1
-        ", &[&user_id]).await?;
+        ",
+                &[&user_id],
+            )
+            .await?;
 
         Ok(())
     }
 
     /// Invalidate all sessions for a user
-    pub async fn invalidate_all_user_sessions(&self, user_id: Uuid) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn invalidate_all_user_sessions(
+        &self,
+        user_id: Uuid,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.invalidate_user_sessions(&user_id).await
     }
 
     /// Get all sessions for a user
-    pub async fn get_user_sessions(&self, user_id: &Uuid) -> Result<Vec<Session>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_user_sessions(
+        &self,
+        user_id: &Uuid,
+    ) -> Result<Vec<Session>, Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
         let rows = client.query("
@@ -434,7 +665,8 @@ impl DatabaseService {
             FROM sessions WHERE user_id = $1 ORDER BY created_at DESC
         ", &[user_id]).await?;
 
-        let sessions = rows.into_iter()
+        let sessions = rows
+            .into_iter()
             .map(|row| Self::row_to_session(&row))
             .collect();
 

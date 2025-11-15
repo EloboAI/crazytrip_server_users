@@ -41,9 +41,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_health_check() {
-        let app = test::init_service(
-            App::new().route("/health", web::get().to(health_check))
-        ).await;
+        let app =
+            test::init_service(App::new().route("/health", web::get().to(health_check))).await;
 
         let req = test::TestRequest::get().uri("/health").to_request();
         let resp = test::call_service(&app, req).await;
@@ -58,9 +57,8 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_api_status() {
-        let app = test::init_service(
-            App::new().route("/api/v1/status", web::get().to(api_status))
-        ).await;
+        let app =
+            test::init_service(App::new().route("/api/v1/status", web::get().to(api_status))).await;
 
         let req = test::TestRequest::get().uri("/api/v1/status").to_request();
         let resp = test::call_service(&app, req).await;

@@ -1,11 +1,11 @@
+use chrono::{TimeZone, Utc};
 use std::sync::Arc;
-use chrono::{Utc, TimeZone};
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::auth::AuthService;
 use crate::database::DatabaseService;
-use crate::models::{ApiResponse, User, LoginRequest, RegisterRequest, Session, AuthResponse};
+use crate::models::{ApiResponse, AuthResponse, LoginRequest, RegisterRequest, Session, User};
 
 /// User service for business logic
 pub struct UserService {
@@ -19,20 +19,31 @@ impl UserService {
     }
 
     /// Register a new user
-    pub async fn register_user(&self, req: RegisterRequest, ip_address: &str, user_agent: Option<&str>) -> Result<ApiResponse<AuthResponse>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn register_user(
+        &self,
+        req: RegisterRequest,
+        ip_address: &str,
+        user_agent: Option<&str>,
+    ) -> Result<ApiResponse<AuthResponse>, Box<dyn std::error::Error + Send + Sync>> {
         // Validate input
         self.validate_registration_request(&req)?;
 
         // Check if user already exists
         if self.db.get_user_by_email(&req.email).await.is_ok() {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("User with this email already exists"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("User with this email already exists"),
+            )));
         }
 
         // Hash password
         let password_hash = self.auth.hash_password(&req.password)?;
 
         // Create user
-        let user = self.db.create_user(&req.email, &req.username, &password_hash).await?;
+        let user = self
+            .db
+            .create_user(&req.email, &req.username, &password_hash)
+            .await?;
 
         // Generate tokens
         let tokens = self.auth.generate_tokens(&user)?;
@@ -48,7 +59,12 @@ impl UserService {
     }
 
     /// Authenticate user
-    pub async fn login_user(&self, req: LoginRequest, ip_address: &str, user_agent: Option<&str>) -> Result<ApiResponse<AuthResponse>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn login_user(
+        &self,
+        req: LoginRequest,
+        ip_address: &str,
+        user_agent: Option<&str>,
+    ) -> Result<ApiResponse<AuthResponse>, Box<dyn std::error::Error + Send + Sync>> {
         // Validate input
         self.validate_login_request(&req)?;
 
@@ -58,17 +74,31 @@ impl UserService {
         // Check if user exists
         let user = match user {
             Some(u) => u,
-            None => return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid email or password")))),
+            None => {
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Invalid email or password"),
+                )))
+            }
         };
 
         // Verify password
-        if !self.auth.verify_password(&req.password, &user.password_hash)? {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid email or password"))));
+        if !self
+            .auth
+            .verify_password(&req.password, &user.password_hash)?
+        {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid email or password"),
+            )));
         }
 
         // Check if user is active
         if !user.is_active {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Account is deactivated"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Account is deactivated"),
+            )));
         }
 
         // Generate tokens
@@ -85,13 +115,21 @@ impl UserService {
     }
 
     /// Refresh access token
-    pub async fn refresh_token(&self, refresh_token: &str, ip_address: &str, user_agent: Option<&str>) -> Result<ApiResponse<AuthResponse>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn refresh_token(
+        &self,
+        refresh_token: &str,
+        ip_address: &str,
+        user_agent: Option<&str>,
+    ) -> Result<ApiResponse<AuthResponse>, Box<dyn std::error::Error + Send + Sync>> {
         // Validate refresh token
         let claims = self.auth.validate_refresh_token(refresh_token)?;
 
         // Reject immediately if this token's JTI has already been revoked (replay protection)
         if self.db.is_token_revoked(&claims.jti).await? {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::PermissionDenied, format!("Refresh token already used or invalid"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("Refresh token already used or invalid"),
+            )));
         }
 
         // Get user
@@ -101,21 +139,35 @@ impl UserService {
         // Check if user exists
         let user = match user {
             Some(u) => u,
-            None => return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("User not found")))),
+            None => {
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("User not found"),
+                )))
+            }
         };
 
         // Check if user is active
         if !user.is_active {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Account is deactivated"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Account is deactivated"),
+            )));
         }
 
         // Invalidate old session (by refresh token hash)
         let old_refresh_hash = self.auth.hash_token(refresh_token)?;
-        let affected = self.db.invalidate_session_by_refresh_token_hash(&old_refresh_hash).await?;
+        let affected = self
+            .db
+            .invalidate_session_by_refresh_token_hash(&old_refresh_hash)
+            .await?;
 
         // If no rows were affected, the refresh token was already used or does not exist
         if affected == 0 {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::PermissionDenied, format!("Refresh token already used or invalid"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("Refresh token already used or invalid"),
+            )));
         }
 
         // Generate new tokens
@@ -137,27 +189,43 @@ impl UserService {
     }
 
     /// Logout user (invalidate session)
-    pub async fn logout_user(&self, access_token: &str) -> Result<ApiResponse<String>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn logout_user(
+        &self,
+        access_token: &str,
+    ) -> Result<ApiResponse<String>, Box<dyn std::error::Error + Send + Sync>> {
         // Hash the token to find the session
         let token_hash = self.auth.hash_token(access_token)?;
 
         // Invalidate session
-        self.db.invalidate_session_by_token_hash(&token_hash).await?;
+        self.db
+            .invalidate_session_by_token_hash(&token_hash)
+            .await?;
 
         Ok(ApiResponse::success("Logged out successfully".to_string()))
     }
 
     /// Get user profile
-    pub async fn get_user_profile(&self, user_id: Uuid) -> Result<ApiResponse<User>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_user_profile(
+        &self,
+        user_id: Uuid,
+    ) -> Result<ApiResponse<User>, Box<dyn std::error::Error + Send + Sync>> {
         let user = self.db.get_user_by_id(&user_id).await?;
         match user {
             Some(u) => Ok(ApiResponse::success(u)),
-            None => Err(Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, format!("User not found")))),
+            None => Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("User not found"),
+            ))),
         }
     }
 
     /// Update user profile
-    pub async fn update_user_profile(&self, user_id: Uuid, username: Option<String>, email: Option<String>) -> Result<ApiResponse<User>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn update_user_profile(
+        &self,
+        user_id: Uuid,
+        username: Option<String>,
+        email: Option<String>,
+    ) -> Result<ApiResponse<User>, Box<dyn std::error::Error + Send + Sync>> {
         // Validate input
         if let Some(ref email) = email {
             self.validate_email(email)?;
@@ -169,7 +237,12 @@ impl UserService {
         // Get current user
         let mut user = match self.db.get_user_by_id(&user_id).await? {
             Some(u) => u,
-            None => return Err(Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, format!("User not found")))),
+            None => {
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("User not found"),
+                )))
+            }
         };
 
         // Update fields
@@ -188,33 +261,50 @@ impl UserService {
     }
 
     /// Deactivate user account
-    pub async fn deactivate_user(&self, user_id: Uuid) -> Result<ApiResponse<String>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn deactivate_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<ApiResponse<String>, Box<dyn std::error::Error + Send + Sync>> {
         // Deactivate user
         self.db.deactivate_user(user_id).await?;
 
         // Invalidate all sessions
         self.db.invalidate_all_user_sessions(user_id).await?;
 
-        Ok(ApiResponse::success("Account deactivated successfully".to_string()))
+        Ok(ApiResponse::success(
+            "Account deactivated successfully".to_string(),
+        ))
     }
 
     /// Get user sessions
     #[allow(dead_code)]
-    pub async fn get_user_sessions(&self, user_id: Uuid) -> Result<ApiResponse<Vec<Session>>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_user_sessions(
+        &self,
+        user_id: Uuid,
+    ) -> Result<ApiResponse<Vec<Session>>, Box<dyn std::error::Error + Send + Sync>> {
         let sessions = self.db.get_user_sessions(&user_id).await?;
         Ok(ApiResponse::success(sessions))
     }
 
     /// Invalidate specific session
-    pub async fn invalidate_session(&self, user_id: Uuid, _session_id: Uuid) -> Result<ApiResponse<String>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn invalidate_session(
+        &self,
+        user_id: Uuid,
+        _session_id: Uuid,
+    ) -> Result<ApiResponse<String>, Box<dyn std::error::Error + Send + Sync>> {
         // For now, we'll invalidate all sessions for the user
         // In a real implementation, you'd get the session by ID and invalidate it specifically
         self.db.invalidate_user_sessions(&user_id).await?;
-        Ok(ApiResponse::success("Session invalidated successfully".to_string()))
+        Ok(ApiResponse::success(
+            "Session invalidated successfully".to_string(),
+        ))
     }
 
     /// Validate registration request
-    fn validate_registration_request(&self, req: &RegisterRequest) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    fn validate_registration_request(
+        &self,
+        req: &RegisterRequest,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Use validator crate for robust email validation
         req.validate()?;
         // Additional business rules
@@ -224,14 +314,26 @@ impl UserService {
     }
 
     /// Validate login request
-    fn validate_login_request(&self, req: &LoginRequest) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    fn validate_login_request(
+        &self,
+        req: &LoginRequest,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Use validator crate for email validation
         // Basic email sanity check: contains '@' and a '.' in domain part
-        if !req.email.contains('@') || req.email.len() > 254 || !req.email.split('@').nth(1).unwrap_or("").contains('.') {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid email format"))));
+        if !req.email.contains('@')
+            || req.email.len() > 254
+            || !req.email.split('@').nth(1).unwrap_or("").contains('.')
+        {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid email format"),
+            )));
         }
         if req.password.is_empty() {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Password is required"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Password is required"),
+            )));
         }
         Ok(())
     }
@@ -239,41 +341,77 @@ impl UserService {
     /// Validate email format
     fn validate_email(&self, email: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if email.is_empty() {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Email is required"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Email is required"),
+            )));
         }
         if email.len() > 254 {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Email too long"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Email too long"),
+            )));
         }
         if !email.contains('@') || !email.split('@').nth(1).unwrap_or("").contains('.') {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid email format"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid email format"),
+            )));
         }
         Ok(())
     }
 
     /// Validate username
-    fn validate_username(&self, username: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    fn validate_username(
+        &self,
+        username: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if username.is_empty() {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Username is required"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Username is required"),
+            )));
         }
         if username.len() < 3 {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Username must be at least 3 characters"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Username must be at least 3 characters"),
+            )));
         }
         if username.len() > 50 {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Username too long"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Username too long"),
+            )));
         }
-        if !username.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Username contains invalid characters"))));
+        if !username
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Username contains invalid characters"),
+            )));
         }
         Ok(())
     }
 
     /// Validate password strength
-    fn validate_password(&self, password: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    fn validate_password(
+        &self,
+        password: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if password.len() < 8 {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Password must be at least 8 characters"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Password must be at least 8 characters"),
+            )));
         }
         if password.len() > 128 {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Password too long"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Password too long"),
+            )));
         }
         // Check for at least one uppercase, one lowercase, one digit
         let has_upper = password.chars().any(|c| c.is_uppercase());
@@ -298,23 +436,37 @@ impl SessionService {
     }
 
     /// Clean up expired sessions
-    pub async fn cleanup_expired_sessions(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn cleanup_expired_sessions(
+        &self,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.db.cleanup_expired_sessions().await?;
         Ok(())
     }
 
     /// Get active session count for user
-    pub async fn get_active_session_count(&self, user_id: Uuid) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_active_session_count(
+        &self,
+        user_id: Uuid,
+    ) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
         self.db.get_active_session_count(&user_id).await
     }
 
     /// Get user sessions
-    pub async fn get_user_sessions(&self, user_id: Uuid) -> Result<Vec<Session>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_user_sessions(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<Session>, Box<dyn std::error::Error + Send + Sync>> {
         self.db.get_user_sessions(&user_id).await
     }
 
     /// Invalidate all sessions for a user except the current one
-    pub async fn invalidate_other_sessions(&self, user_id: Uuid, current_session_id: Uuid) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.db.invalidate_other_sessions(&user_id, &current_session_id).await
+    pub async fn invalidate_other_sessions(
+        &self,
+        user_id: Uuid,
+        current_session_id: Uuid,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.db
+            .invalidate_other_sessions(&user_id, &current_session_id)
+            .await
     }
 }

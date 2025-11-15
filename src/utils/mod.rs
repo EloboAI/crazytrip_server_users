@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Pagination parameters
@@ -291,7 +291,13 @@ pub mod logging {
         }
     }
 
-    pub fn log_request(method: &str, path: &str, status: u16, duration_ms: u128, remote_addr: &str) {
+    pub fn log_request(
+        method: &str,
+        path: &str,
+        status: u16,
+        duration_ms: u128,
+        remote_addr: &str,
+    ) {
         let level = match status {
             200..=299 => Level::Info,
             300..=399 => Level::Info,
@@ -300,7 +306,15 @@ pub mod logging {
             _ => Level::Info,
         };
 
-        log::log!(level, "{} {} {} {}ms from {}", method, path, status, duration_ms, remote_addr);
+        log::log!(
+            level,
+            "{} {} {} {}ms from {}",
+            method,
+            path,
+            status,
+            duration_ms,
+            remote_addr
+        );
     }
 }
 
@@ -385,13 +399,31 @@ pub mod response {
 use std::sync::Arc;
 
 /// Log internal error details to database and to logger, return the inserted error ID.
-pub async fn log_internal_error(db: Arc<crate::database::DatabaseService>, severity: &str, category: &str, message: &str, details: Option<serde_json::Value>, request_id: Option<&str>, user_id: Option<uuid::Uuid>) -> Result<uuid::Uuid, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn log_internal_error(
+    db: Arc<crate::database::DatabaseService>,
+    severity: &str,
+    category: &str,
+    message: &str,
+    details: Option<serde_json::Value>,
+    request_id: Option<&str>,
+    user_id: Option<uuid::Uuid>,
+) -> Result<uuid::Uuid, Box<dyn std::error::Error + Send + Sync>> {
     // Sanitize details before logging to avoid leaking sensitive info
     let sanitized_details = details.and_then(|d| {
         match d {
             serde_json::Value::Object(mut map) => {
                 // iterate keys and mask commonly sensitive fields
-                for key in ["password", "token", "access_token", "refresh_token", "authorization", "auth", "email"].iter() {
+                for key in [
+                    "password",
+                    "token",
+                    "access_token",
+                    "refresh_token",
+                    "authorization",
+                    "auth",
+                    "email",
+                ]
+                .iter()
+                {
                     if let Some(v) = map.get_mut(*key) {
                         if let Some(s) = v.as_str() {
                             *v = serde_json::Value::String(mask_sensitive(s));
@@ -403,15 +435,35 @@ pub async fn log_internal_error(db: Arc<crate::database::DatabaseService>, sever
             // For arrays or strings, attempt a safe redact by converting to string and masking
             other => {
                 let s = other.to_string();
-                Some(serde_json::Value::String(truncate_string(&mask_sensitive(&s), 1024)))
+                Some(serde_json::Value::String(truncate_string(
+                    &mask_sensitive(&s),
+                    1024,
+                )))
             }
         }
     });
 
     // Log sanitized details to stdout/file logger
-    log::error!("[{}] {}: {} - details: {:?} request_id: {:?} user_id: {:?}", severity, category, message, sanitized_details, request_id, user_id);
+    log::error!(
+        "[{}] {}: {} - details: {:?} request_id: {:?} user_id: {:?}",
+        severity,
+        category,
+        message,
+        sanitized_details,
+        request_id,
+        user_id
+    );
 
     // Insert into database error_logs using sanitized details
-    let id = db.insert_error_log(severity, category, message, sanitized_details, request_id, user_id).await?;
+    let id = db
+        .insert_error_log(
+            severity,
+            category,
+            message,
+            sanitized_details,
+            request_id,
+            user_id,
+        )
+        .await?;
     Ok(id)
 }
