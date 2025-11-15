@@ -18,6 +18,12 @@ pub struct ServerConfig {
     pub workers: usize,
     pub max_connections: usize,
     pub timeout_seconds: u64,
+    // Keep-alive duration in seconds
+    pub keep_alive_seconds: u64,
+    // Client timeout for reading payload/body in seconds
+    pub client_timeout_seconds: u64,
+    // Client shutdown timeout in seconds
+    pub client_shutdown_seconds: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +82,18 @@ impl AppConfig {
                     .unwrap_or_else(|_| "30".to_string())
                     .parse()
                     .expect("TIMEOUT_SECONDS must be a valid number"),
+                keep_alive_seconds: env::var("KEEP_ALIVE_SECONDS")
+                    .unwrap_or_else(|_| "75".to_string())
+                    .parse()
+                    .expect("KEEP_ALIVE_SECONDS must be a valid number"),
+                client_timeout_seconds: env::var("CLIENT_TIMEOUT_SECONDS")
+                    .unwrap_or_else(|_| "30".to_string())
+                    .parse()
+                    .expect("CLIENT_TIMEOUT_SECONDS must be a valid number"),
+                client_shutdown_seconds: env::var("CLIENT_SHUTDOWN_SECONDS")
+                    .unwrap_or_else(|_| "5".to_string())
+                    .parse()
+                    .expect("CLIENT_SHUTDOWN_SECONDS must be a valid number"),
             },
             database: DatabaseConfig {
                 url: env::var("DATABASE_URL")

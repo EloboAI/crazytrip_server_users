@@ -180,6 +180,11 @@ async fn main() -> std::io::Result<()> {
     })
     .bind((config.server.host.clone(), config.server.port))?
     .workers(config.server.workers)
+    // Apply server timeouts and connection settings
+    .keep_alive(std::time::Duration::from_secs(config.server.keep_alive_seconds))
+    .client_request_timeout(std::time::Duration::from_secs(config.server.client_timeout_seconds))
+    .client_disconnect_timeout(std::time::Duration::from_secs(config.server.client_shutdown_seconds))
+    .max_connections(config.server.max_connections)
     .run()
     .await
 }

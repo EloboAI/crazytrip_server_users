@@ -169,7 +169,7 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 | ✅ | MEDIA | CORS Mal Configurado | Permite credenciales con wildcard origins | ✅ RESUELTA (Se requiere origen explícito para `Access-Control-Allow-Credentials`, wildcard solo permitido sin credenciales) |
 | ✅ | MEDIA | Validación de Email Débil | Validación básica que permite emails inválidos | ✅ RESUELTA (Se usa `validator` para validación de emails en payloads) |
 | ✅ | MEDIA | Falta de Logging Seguro | Logging de información potencialmente sensible | ✅ RESUELTA (Se sanitizan y enmascaran campos sensibles antes de loggear) |
-| ❌ | MEDIA | Timeouts No Configurados | Sin timeouts configurados para requests | Configurar timeouts apropiados |
+| ✅ | MEDIA | Timeouts No Configurados | Sin timeouts configurados para requests | ✅ RESUELTA (Timeouts configurables para keep-alive, request read, and shutdown) |
 | ❌ | MEDIA | Headers de Seguridad Incompletos | Falta CSP, HSTS preload y otros headers importantes | Agregar headers de seguridad adicionales |
 | ❌ | MEDIA | Dependencias Vulnerables | Librerías no mantenidas con bugs de seguridad | Remover dependencias no usadas o actualizar |
 | ❌ | BAJA | Secrets en Variables de Entorno | JWT_SECRET puede estar sin protección | Usar secret management seguro (Vault, AWS Secrets Manager) |
@@ -359,6 +359,37 @@ psql -c "SELECT created_at, severity, category, message, details FROM error_logs
 ```
 
 If you see unmasked tokens or passwords in logs, please open an issue and include the example payload you used (avoid posting real secrets).
+
+## Timeouts — Verification
+
+The server exposes configurable timeout settings via environment variables. Example values can be set in your `.env` file:
+
+```
+# Keep-alive for persistent connections (seconds)
+KEEP_ALIVE_SECONDS=75
+
+# Time allowed to receive the full client request payload (seconds)
+CLIENT_TIMEOUT_SECONDS=30
+
+# Time to wait for client disconnect during shutdown (seconds)
+CLIENT_SHUTDOWN_SECONDS=5
+
+# General request timeout used in some handlers (fallback)
+TIMEOUT_SECONDS=30
+```
+
+To verify that timeouts are applied, start the server and use a client that delays sending the request body (e.g., `curl --limit-rate` or a custom script). Requests that exceed `CLIENT_TIMEOUT_SECONDS` will be terminated by the server.
+
+Example: simulate a slow upload (adjust host/port):
+
+```bash
+# This simulates a slow POST by limiting curl's upload rate. Adjust file and host.
+curl -X POST http://127.0.0.1:8080/api/v1/auth/register \
+	-H "Content-Type: application/json" \
+	--data-binary @large_payload.json --limit-rate 1 --max-time 120
+```
+
+If the server cuts the connection before the full payload is received and returns a 408 or similar error, timeouts are active. Logs will also reflect client request timeouts.
 
 ## Email Validation — Verification
 
