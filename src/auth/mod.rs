@@ -207,12 +207,31 @@ pub fn extract_token_from_request(req: &impl HttpMessage) -> Option<String> {
     // Try cookie as fallback
     if let Some(cookie_header) = req.headers().get("cookie") {
         if let Ok(cookie_str) = cookie_header.to_str() {
-            // Parse cookie string to find access_token
+            // Parse cookies into a map
+            let mut cookies = std::collections::HashMap::new();
             for cookie in cookie_str.split(';') {
                 let cookie = cookie.trim();
-                if cookie.starts_with("access_token=") {
-                    return Some(cookie[13..].to_string());
+                if let Some(idx) = cookie.find('=') {
+                    let (k, v) = cookie.split_at(idx);
+                    let key = k.trim().to_string();
+                    let value = v[1..].to_string();
+                    cookies.insert(key, value);
                 }
+            }
+
+            // Double-submit CSRF protection: require a csrf token header that matches the csrf cookie
+            // Only accept access_token from cookies when the client also sends a matching `x-csrf-token` header.
+            if let Some(access_token) = cookies.get("access_token") {
+                if let Some(csrf_cookie) = cookies.get("csrf_token") {
+                    if let Some(csrf_header_val) = req.headers().get("x-csrf-token") {
+                        if let Ok(csrf_header_str) = csrf_header_val.to_str() {
+                            if csrf_header_str == csrf_cookie.as_str() {
+                                return Some(access_token.to_string());
+                            }
+                        }
+                    }
+                }
+                // If CSRF validation fails, do not accept cookie token
             }
         }
     }
