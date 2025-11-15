@@ -26,7 +26,14 @@ async fn main() -> std::io::Result<()> {
     let _ = dotenv();
 
     // Load configuration
-    let config = AppConfig::from_env().expect("Failed to load configuration");
+    let config = match AppConfig::from_env() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("Failed to load configuration: {}", e);
+            // Persist the error if possible or exit with a non-zero code
+            std::process::exit(1);
+        }
+    };
 
     // Initialize logging: file + stdout (rotating file)
     // Try to initialize flexi_logger to write to a logs directory; fall back to env_logger
@@ -50,11 +57,14 @@ async fn main() -> std::io::Result<()> {
     log::info!("Workers: {}", config.server.workers);
 
     // Initialize database
-    let db_service = Arc::new(
-        DatabaseService::new(&config.database)
-            .await
-            .expect("Failed to initialize database")
-    );
+    let db_service = match DatabaseService::new(&config.database).await {
+        Ok(db) => Arc::new(db),
+        Err(e) => {
+            log::error!("Failed to initialize database: {}", e);
+            eprintln!("Failed to initialize database: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     // Initialize DB schema (create tables) in development if missing
     if let Err(e) = db_service.init_schema().await {
