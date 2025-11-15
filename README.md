@@ -276,3 +276,51 @@ WantedBy=multi-user.target
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Development — DB & Run (local helper commands)
+
+Below are commands used during local development and debugging for creating the database, running a Postgres container, and using the repository helper binaries.
+
+- Create the database locally with `psql` (if you have psql installed):
+
+```bash
+# Create DB using postgres user and password 'moti'
+PGPASSWORD=moti psql -U postgres -h 127.0.0.1 -p 5432 -c "CREATE DATABASE crazytrip_users;"
+```
+
+- Or use Docker to run a local Postgres instance:
+
+```bash
+docker run --name ct-dev-postgres -e POSTGRES_PASSWORD=moti -e POSTGRES_USER=postgres -e POSTGRES_DB=crazytrip_users -p 5432:5432 -d postgres:15
+```
+
+- Helper binary: ensure DB exists (connects to `postgres` database and creates `crazytrip_users` if missing):
+
+```bash
+cargo run --bin create_db
+```
+
+- Helper binary: inspect `sessions` table and test DELETE in a transaction (safe check):
+
+```bash
+cargo run --bin check_sessions
+```
+
+- Run the main server explicitly (repository contains multiple binaries):
+
+```bash
+cargo run --bin crazytrip-user-service
+```
+
+- If you previously ran `cargo run` and it fails with `could not determine which binary to run`, use the `--bin` flag as shown above.
+
+- Useful debug flags when running the server:
+
+```bash
+# enable debug logs and backtrace
+RUST_LOG=debug RUST_BACKTRACE=1 cargo run --bin crazytrip-user-service
+```
+
+- Notes:
+	- The server contains a development convenience call to `init_schema()` on startup which ensures the required tables exist. In production, prefer running migration scripts instead of auto-creating schema at startup.
+	- If port 8080 is already in use, find and stop the process with `lsof -iTCP:8080 -sTCP:LISTEN` then `kill <PID>`.

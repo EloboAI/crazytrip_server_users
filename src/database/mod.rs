@@ -46,46 +46,44 @@ impl DatabaseService {
     pub async fn init_schema(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        // Create users table
-        client.execute("
-            CREATE TABLE IF NOT EXISTS users (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                email VARCHAR(255) UNIQUE NOT NULL,
-                username VARCHAR(50) UNIQUE NOT NULL,
-                password_hash VARCHAR(255) NOT NULL,
-                role VARCHAR(20) NOT NULL DEFAULT 'User',
-                is_active BOOLEAN NOT NULL DEFAULT true,
-                is_email_verified BOOLEAN NOT NULL DEFAULT false,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                last_login_at TIMESTAMPTZ,
-                login_attempts INTEGER NOT NULL DEFAULT 0,
-                locked_until TIMESTAMPTZ,
+        // Ensure pgcrypto extension for gen_random_uuid() is present
+        client.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto", &[]).await.ok();
 
-                CONSTRAINT valid_role CHECK (role IN ('User', 'Admin', 'Moderator')),
-                CONSTRAINT valid_email CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'),
-                CONSTRAINT valid_username CHECK (length(username) >= 3 AND length(username) <= 50)
-            )
+        // Create users table
+        client.execute("\
+            CREATE TABLE IF NOT EXISTS users (\
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
+                email VARCHAR(255) UNIQUE NOT NULL,\
+                username VARCHAR(50) UNIQUE NOT NULL,\
+                password_hash VARCHAR(255) NOT NULL,\
+                role VARCHAR(20) NOT NULL DEFAULT 'User',\
+                is_active BOOLEAN NOT NULL DEFAULT true,\
+                is_email_verified BOOLEAN NOT NULL DEFAULT false,\
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\
+                last_login_at TIMESTAMPTZ,\
+                login_attempts INTEGER NOT NULL DEFAULT 0,\
+                locked_until TIMESTAMPTZ,\
+                CONSTRAINT valid_role CHECK (role IN ('User', 'Admin', 'Moderator')),\
+                CONSTRAINT valid_email CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$'),\
+                CONSTRAINT valid_username CHECK (length(username) >= 3 AND length(username) <= 50)\
+            )\
         ", &[]).await?;
 
-        // Create sessions table
-        client.execute("
-            CREATE TABLE IF NOT EXISTS sessions (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                token_hash VARCHAR(255) UNIQUE NOT NULL,
-                refresh_token_hash VARCHAR(255) UNIQUE,
-                ip_address INET NOT NULL,
-                user_agent VARCHAR(500),
-                expires_at TIMESTAMPTZ NOT NULL,
-                refresh_expires_at TIMESTAMPTZ,
-                is_active BOOLEAN NOT NULL DEFAULT true,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-                INDEX idx_sessions_user_id (user_id),
-                INDEX idx_sessions_token_hash (token_hash),
-                INDEX idx_sessions_expires_at (expires_at)
-            )
+        // Create sessions table (indexes created separately)
+        client.execute("\
+            CREATE TABLE IF NOT EXISTS sessions (\
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,\
+                token_hash VARCHAR(255) UNIQUE NOT NULL,\
+                refresh_token_hash VARCHAR(255) UNIQUE,\
+                ip_address INET NOT NULL,\
+                user_agent VARCHAR(500),\
+                expires_at TIMESTAMPTZ NOT NULL,\
+                refresh_expires_at TIMESTAMPTZ,\
+                is_active BOOLEAN NOT NULL DEFAULT true,\
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\
+            )\
         ", &[]).await?;
 
         // Create indexes for performance
@@ -256,11 +254,18 @@ impl DatabaseService {
     pub async fn cleanup_expired_sessions(&self) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        let rows = client.query("
-            DELETE FROM sessions WHERE expires_at < NOW() RETURNING id
-        ", &[]).await?;
-
-        Ok(rows.len() as u64)
+        let query = "DELETE FROM sessions WHERE expires_at < NOW() RETURNING id";
+        match client.query(query, &[]).await {
+            Ok(rows) => {
+                let removed = rows.len() as u64;
+                log::debug!("cleanup_expired_sessions removed {} rows", removed);
+                Ok(removed)
+            }
+            Err(e) => {
+                log::error!("cleanup_expired_sessions db error: {}", e);
+                Err(Box::new(e))
+            }
+        }
     }
 
     /// Get active session count for a user

@@ -18,9 +18,13 @@ use auth::{AuthService, RateLimitStore};
 use services::{UserService, SessionService};
 use middleware::*;
 use handlers::*;
+use dotenvy::dotenv;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Load environment from .env (if present)
+    let _ = dotenv();
+
     // Load configuration
     let config = AppConfig::from_env().expect("Failed to load configuration");
 
@@ -41,6 +45,13 @@ async fn main() -> std::io::Result<()> {
             .await
             .expect("Failed to initialize database")
     );
+
+    // Initialize DB schema (create tables) in development if missing
+    if let Err(e) = db_service.init_schema().await {
+        log::error!("Failed to initialize DB schema: {}", e);
+    } else {
+        log::info!("DB schema ensured");
+    }
 
     // Initialize auth service
     let auth_service = Arc::new(
