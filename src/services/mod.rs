@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -85,7 +85,7 @@ impl UserService {
     }
 
     /// Refresh access token
-    pub async fn refresh_token(&self, refresh_token: &str) -> Result<ApiResponse<AuthResponse>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn refresh_token(&self, refresh_token: &str, ip_address: &str, user_agent: Option<&str>) -> Result<ApiResponse<AuthResponse>, Box<dyn std::error::Error + Send + Sync>> {
         // Validate refresh token
         let claims = self.auth.validate_refresh_token(refresh_token)?;
 
@@ -104,25 +104,17 @@ impl UserService {
             return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Account is deactivated"))));
         }
 
-        // Invalidate old session
-        self.db.invalidate_session_by_refresh_token_hash(&self.auth.hash_token(refresh_token)?).await?;
+        // Invalidate old session (by refresh token hash)
+        let old_refresh_hash = self.auth.hash_token(refresh_token)?;
+        self.db.invalidate_session_by_refresh_token_hash(&old_refresh_hash).await?;
 
         // Generate new tokens
         let tokens = self.auth.generate_tokens(&user)?;
 
-        // Create new session
-        let session = Session {
-            id: Uuid::new_v4(),
-            user_id: user.id,
-            token_hash: "".to_string(),
-            refresh_token_hash: Some("".to_string()),
-            ip_address: "".to_string(),
-            user_agent: None,
-            expires_at: Utc::now() + Duration::hours(24),
-            refresh_expires_at: Some(Utc::now() + Duration::hours(24 * 7)),
-            is_active: true,
-            created_at: Utc::now(),
-        };
+        // Build session using AuthService helper and populate token hashes and metadata
+        let mut session = self.auth.create_session(&user, ip_address, user_agent);
+        session.token_hash = self.auth.hash_token(&tokens.access_token)?;
+        session.refresh_token_hash = Some(self.auth.hash_token(&tokens.refresh_token)?);
 
         self.db.create_session(&session).await?;
 

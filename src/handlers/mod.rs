@@ -121,7 +121,12 @@ pub async fn refresh_token(
         None => return Ok(utils::response::error_response("Refresh token is required", 400)),
     };
 
-    match user_service.refresh_token(refresh_token).await {
+    // Extract request metadata if available from the JSON body (handlers may call this without HttpRequest in some cases)
+    // Fallback to unknown if not provided.
+    let ip = req.get("ip_address").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "unknown".to_string());
+    let ua = req.get("user_agent").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+    match user_service.refresh_token(refresh_token, &ip, ua.as_deref()).await {
         Ok(response) => Ok(utils::response::success_response(response)),
         Err(err) => Ok(utils::response::error_response(&err.to_string().as_str(), 401)),
     }
