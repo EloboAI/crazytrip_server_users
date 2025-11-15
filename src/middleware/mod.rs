@@ -180,6 +180,7 @@ pub struct RateLimitMiddleware {
     pub store: Arc<Mutex<RateLimitStore>>,
     pub max_requests: u32,
     pub window_seconds: u64,
+    pub auth_service: Option<Arc<crate::auth::AuthService>>,
 }
 
 impl<S> Transform<S, ServiceRequest> for RateLimitMiddleware
@@ -199,6 +200,7 @@ where
             store: Arc::clone(&self.store),
             max_requests: self.max_requests,
             window_seconds: self.window_seconds,
+            auth_service: self.auth_service.clone(),
         }))
     }
 }
@@ -208,6 +210,7 @@ pub struct RateLimitMiddlewareService<S> {
     store: Arc<Mutex<RateLimitStore>>,
     max_requests: u32,
     window_seconds: u64,
+    auth_service: Option<Arc<crate::auth::AuthService>>,
 }
 
 impl<S> Service<ServiceRequest> for RateLimitMiddlewareService<S>
@@ -226,6 +229,7 @@ where
         let store = Arc::clone(&self.store);
         let max_requests = self.max_requests;
         let window_seconds = self.window_seconds;
+        let auth_service = self.auth_service.clone();
 
         Box::pin(async move {
             // Get client IP for rate limiting
@@ -233,9 +237,45 @@ where
                 .unwrap_or("unknown")
                 .to_string();
 
+            // Try to extract identifying key: prefer user id (from valid token), then api key, then fallback to IP-only
+            let mut key_parts: Vec<String> = Vec::new();
+
+            // API key header if present
+            if let Some(api_val) = req.headers().get("x-api-key") {
+                if let Ok(api_str) = api_val.to_str() {
+                    key_parts.push(format!("api:{}", api_str));
+                }
+            }
+
+            // Bearer token: try to validate to get user id
+            if let Some(token) = extract_token_from_request(&req) {
+                if let Some(auth) = auth_service.as_ref() {
+                    if let Ok(claims) = auth.validate_access_token(&token) {
+                        key_parts.push(format!("user:{}", claims.sub));
+                    } else {
+                        // If token can't be validated, include token prefix to still rate limit
+                        let short = &token.as_bytes()[..std::cmp::min(8, token.len())];
+                        let hex_str = short.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                        key_parts.push(format!("token:{}", hex_str));
+                    }
+                } else {
+                    // no auth service available: use token prefix
+                    let short = &token.as_bytes()[..std::cmp::min(8, token.len())];
+                    let hex_str = short.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                    key_parts.push(format!("token:{}", hex_str));
+                }
+            }
+
+            // Build final key
+            let key = if !key_parts.is_empty() {
+                format!("{}|ip:{}", key_parts.join("+"), ip)
+            } else {
+                ip.clone()
+            };
+
             // Check rate limit
             let mut store = store.lock().await;
-            if !store.is_allowed(&ip, max_requests, window_seconds) {
+            if !store.is_allowed(&key, max_requests, window_seconds) {
                 let response = HttpResponse::TooManyRequests()
                     .json(serde_json::json!({"error": "Rate limit exceeded. Please try again later."}));
                 return Ok(req.into_response(response));

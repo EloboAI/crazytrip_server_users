@@ -132,6 +132,7 @@ async fn main() -> std::io::Result<()> {
                 store: Arc::clone(&rate_limit_store),
                 max_requests: config.security.rate_limit_requests,
                 window_seconds: config.security.rate_limit_window_seconds,
+                auth_service: Some(Arc::clone(&auth_service)),
             })
             .wrap(CorsMiddleware {
                 allowed_origins: config.security.cors_allowed_origins.clone(),
