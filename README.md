@@ -324,3 +324,17 @@ RUST_LOG=debug RUST_BACKTRACE=1 cargo run --bin crazytrip-user-service
 - Notes:
 	- The server contains a development convenience call to `init_schema()` on startup which ensures the required tables exist. In production, prefer running migration scripts instead of auto-creating schema at startup.
 	- If port 8080 is already in use, find and stop the process with `lsof -iTCP:8080 -sTCP:LISTEN` then `kill <PID>`.
+
+## Security: SQL Injection — Audit and Remediation
+
+I performed a manual audit of the codebase to find and remediate obvious SQL injection risks. Changes and findings:
+
+- All database queries in `src/database/mod.rs` use parameterized queries (`$1`, `$2`, ...) and pass parameters via the client API — this prevents injection via values.
+- The helper `create_db` previously built a `CREATE DATABASE` statement using `format!`. I replaced that with a strict validation of the identifier (allowlist of ASCII alnum + `_`) before formatting the SQL, preventing injection via database name.
+- I fixed `init_schema()` SQL so it does not use invalid SQL constructs and added `pgcrypto` extension usage to safely use `gen_random_uuid()`.
+
+Recommended next steps (optional):
+
+- Add an integration test that sends specially crafted input containing quotes, semicolons, and typical SQL payload characters to relevant public functions to ensure queries are always parameterized.
+- Consider integrating `semgrep` or a tree-sitter based static analysis for higher-precision scanning if you want automated checks in CI.
+

@@ -28,6 +28,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Create database
+    // Validate database name to avoid SQL injection via identifier
+    // Allow only alphanumeric and underscore characters
+    let valid_name = db_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+
+    if !valid_name {
+        eprintln!("Refusing to create database: invalid database name '{}'.", db_name);
+        return Ok(());
+    }
+
     let create_sql = format!("CREATE DATABASE \"{}\"", db_name);
     match client.execute(create_sql.as_str(), &[]).await {
         Ok(_) => println!("Database '{}' created successfully.", db_name),
