@@ -110,8 +110,39 @@ impl DatabaseService {
         client.execute("CREATE INDEX IF NOT EXISTS idx_error_logs_occurred_at ON error_logs(occurred_at)", &[]).await?;
         client.execute("CREATE INDEX IF NOT EXISTS idx_error_logs_category ON error_logs(category)", &[]).await?;
 
+        // Create revoked_tokens table for token revocation (prevent replay attacks)
+        client.execute("\
+            CREATE TABLE IF NOT EXISTS revoked_tokens (\
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
+                jti VARCHAR(100) UNIQUE NOT NULL,\
+                revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\
+                expires_at TIMESTAMPTZ NULL\
+            )\
+        ", &[]).await?;
+        client.execute("CREATE INDEX IF NOT EXISTS idx_revoked_tokens_jti ON revoked_tokens(jti)", &[]).await?;
+        client.execute("CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires_at ON revoked_tokens(expires_at)", &[]).await?;
+
         log::info!("Database schema initialized");
         Ok(())
+    }
+
+    /// Revoke a token by JTI and optional expiry time
+    pub async fn revoke_token(&self, jti: &str, expires_at: Option<DateTime<Utc>>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let client = self.get_client().await?;
+
+        client.execute("\
+            INSERT INTO revoked_tokens (jti, expires_at) VALUES ($1, $2) ON CONFLICT (jti) DO UPDATE SET revoked_at = NOW(), expires_at = EXCLUDED.expires_at\
+        ", &[&jti, &expires_at]).await?;
+
+        Ok(())
+    }
+
+    /// Check if a token JTI is revoked
+    pub async fn is_token_revoked(&self, jti: &str) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+        let client = self.get_client().await?;
+
+        let row = client.query_opt("SELECT jti FROM revoked_tokens WHERE jti = $1 LIMIT 1", &[&jti]).await?;
+        Ok(row.is_some())
     }
 
     /// Insert an error log record

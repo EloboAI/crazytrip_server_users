@@ -163,7 +163,7 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 | ✅ | CRÍTICA | Confusión de nombres con crate vulnerable | El proyecto se llamaba `users` igual que un crate público vulnerable. Se cambió el nombre del crate a `crazytrip-user-service` | ✅ RESUELTA |
 | ✅ | CRÍTICA | SQL Injection | Uso de concatenación de strings en consultas SQL en lugar de parámetros preparados | ✅ RESUELTA |
 | ✅ | CRÍTICA | Exposición de Información Sensible | Manejo de errores que expone detalles internos del sistema | ✅ RESUELTA |
-| ❌ | ALTA | Rate Limiting Ineficaz | Rate limiting solo por IP, fácilmente bypassable | Implementar rate limiting por usuario + IP con tokens de API |
+| ✅ | ALTA | Rate Limiting Ineficaz | Rate limiting solo por IP, fácilmente bypassable | ✅ RESUELTA |
 | ❌ | ALTA | Falta de Validación JWT | No se valida el campo JTI para prevenir replay attacks | Implementar lista negra de tokens revocados |
 | ❌ | ALTA | Sesiones No Seguras | Campos de sesión vacíos o no inicializados correctamente | Inicializar correctamente todos los campos de sesión |
 | ❌ | MEDIA | CORS Mal Configurado | Permite credenciales con wildcard origins | Lista explícita de orígenes permitidos |

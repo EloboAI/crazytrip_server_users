@@ -16,6 +16,7 @@ use crate::auth::{AuthService, RateLimitStore, extract_token_from_request};
 /// Authentication middleware
 pub struct AuthMiddleware {
     pub auth_service: Arc<AuthService>,
+    pub db_service: Arc<crate::database::DatabaseService>,
 }
 
 impl<S> Transform<S, ServiceRequest> for AuthMiddleware
@@ -33,6 +34,7 @@ where
         ready(Ok(AuthMiddlewareService {
             service: Arc::new(service),
             auth_service: Arc::clone(&self.auth_service),
+            db_service: Arc::clone(&self.db_service),
         }))
     }
 }
@@ -40,6 +42,7 @@ where
 pub struct AuthMiddlewareService<S> {
     service: Arc<S>,
     auth_service: Arc<AuthService>,
+    db_service: Arc<crate::database::DatabaseService>,
 }
 
 impl<S> Service<ServiceRequest> for AuthMiddlewareService<S>
@@ -56,6 +59,7 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let service = Arc::clone(&self.service);
         let auth_service = Arc::clone(&self.auth_service);
+        let db_service = Arc::clone(&self.db_service);
 
         Box::pin(async move {
             // Skip auth for certain routes
@@ -77,6 +81,15 @@ where
             // Validate token
             match auth_service.validate_access_token(&token) {
                 Ok(claims) => {
+                    // Check revocation list by JTI
+                    if let Ok(is_revoked) = db_service.is_token_revoked(&claims.jti).await {
+                        if is_revoked {
+                            let response = HttpResponse::Unauthorized()
+                                .json(serde_json::json!({"error": "Token revoked"}));
+                            return Ok(req.into_response(response));
+                        }
+                    }
+
                     // Add user info to request extensions
                     req.extensions_mut().insert(claims);
                     service.call(req).await

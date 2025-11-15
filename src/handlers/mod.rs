@@ -4,6 +4,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::auth::{AuthService, Claims};
+use chrono::TimeZone;
 use crate::models::{ApiResponse, LoginRequest, RegisterRequest};
 use crate::services::{UserService, SessionService};
 use crate::utils;
@@ -120,7 +121,8 @@ pub async fn refresh_token(
 pub async fn logout_user(
     req: HttpRequest,
     user_service: web::Data<Arc<UserService>>,
-    _auth_service: web::Data<Arc<AuthService>>,
+    auth_service: web::Data<Arc<AuthService>>,
+    db_service: web::Data<Arc<crate::database::DatabaseService>>,
 ) -> Result<HttpResponse> {
     let token = match crate::auth::extract_token_from_request(&req) {
         Some(token) => token,
@@ -128,7 +130,23 @@ pub async fn logout_user(
     };
 
     match user_service.logout_user(&token).await {
-        Ok(response) => Ok(utils::response::success_response(response)),
+        Ok(response) => {
+            // Revoke token JTI asynchronously so logout remains fast
+            let db_clone: Arc<crate::database::DatabaseService> = Arc::clone(db_service.get_ref());
+            let auth_clone: Arc<AuthService> = Arc::clone(auth_service.get_ref());
+            let token_clone = token.clone();
+            tokio::spawn(async move {
+                if let Ok(claims) = auth_clone.validate_access_token(&token_clone) {
+                    // Convert exp (seconds) to Option<DateTime<Utc>> using TimeZone API
+                    let expires_at = chrono::Utc.timestamp_opt(claims.exp, 0).single();
+                    if let Err(e) = db_clone.revoke_token(&claims.jti, expires_at).await {
+                        let _ = utils::log_internal_error(Arc::clone(&db_clone), "ERROR", "revoke_token", "Failed to persist revoked token", Some(serde_json::json!({"error": e.to_string()})), None, None).await;
+                    }
+                }
+            });
+
+            Ok(utils::response::success_response(response))
+        }
         Err(err) => Ok(utils::response::error_response(&err.to_string().as_str(), 400)),
     }
 }

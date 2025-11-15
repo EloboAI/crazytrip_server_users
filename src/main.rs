@@ -139,6 +139,7 @@ async fn main() -> std::io::Result<()> {
             })
             .wrap(AuthMiddleware {
                 auth_service: Arc::clone(&auth_service),
+                db_service: Arc::clone(&db_service),
             })
 
             // Actix built-in middleware (applied after custom middleware to avoid body type conflicts)
