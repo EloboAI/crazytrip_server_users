@@ -159,10 +159,28 @@ where
 
             if let Some(origin) = origin_header {
                 if let Ok(origin_str) = origin.to_str() {
-                    if allowed_origins.contains(&origin_str.to_string()) || allowed_origins.contains(&"*".to_string()) {
+                    // Prefer exact match. If allowed_origins contains '*' but credentials are being allowed,
+                    // do NOT use '*' when responding with credentials. We only support wildcard when credentials
+                    // are not required, but to be safe we prefer explicit origins only.
+                    let is_allowed_exact = allowed_origins.iter().any(|o| o == origin_str);
+                    let has_wildcard = allowed_origins.iter().any(|o| o == "*");
+
+                    if is_allowed_exact {
                         headers.insert(
                             header::ACCESS_CONTROL_ALLOW_ORIGIN,
-                            origin,
+                            header::HeaderValue::from_str(origin_str).unwrap_or_else(|_| header::HeaderValue::from_static("")),
+                        );
+
+                        // Only send credentials header when origin was explicitly allowed
+                        headers.insert(
+                            header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+                            header::HeaderValue::from_static("true"),
+                        );
+                    } else if has_wildcard {
+                        // Wildcard present but origin not explicitly listed: allow but DO NOT send credentials
+                        headers.insert(
+                            header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                            header::HeaderValue::from_static("*")
                         );
                     }
                 }
@@ -176,11 +194,6 @@ where
             headers.insert(
                 header::ACCESS_CONTROL_ALLOW_HEADERS,
                 header::HeaderValue::from_static("Content-Type, Authorization, X-Requested-With"),
-            );
-
-            headers.insert(
-                header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
-                header::HeaderValue::from_static("true"),
             );
 
             Ok(res)

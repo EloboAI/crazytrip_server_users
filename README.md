@@ -166,7 +166,7 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 | ✅ | ALTA | Rate Limiting Ineficaz | Rate limiting solo por IP, fácilmente bypassable | ✅ RESUELTA |
 | ✅ | ALTA | Falta de Validación JWT | No se valida el campo JTI para prevenir replay attacks | ✅ RESUELTA (Lista negra de JTI implementada)
 | ✅ | ALTA | Sesiones No Seguras | Campos de sesión vacíos o no inicializados correctamente | ✅ RESUELTA (Se inicializan `token_hash`, `refresh_token_hash`, `ip_address`, `user_agent`, `expires_at`) |
-| ❌ | MEDIA | CORS Mal Configurado | Permite credenciales con wildcard origins | Lista explícita de orígenes permitidos |
+| ✅ | MEDIA | CORS Mal Configurado | Permite credenciales con wildcard origins | ✅ RESUELTA (Se requiere origen explícito para `Access-Control-Allow-Credentials`, wildcard solo permitido sin credenciales) |
 | ❌ | MEDIA | Validación de Email Débil | Validación básica que permite emails inválidos | Usar regex robusto o librería de validación |
 | ❌ | MEDIA | Falta de Logging Seguro | Logging de información potencialmente sensible | Sanitizar datos antes de loggear |
 | ❌ | MEDIA | Timeouts No Configurados | Sin timeouts configurados para requests | Configurar timeouts apropiados |
@@ -333,6 +333,24 @@ The two critical issues (SQL Injection and Exposure of Internal Errors) were rem
 - Exposure of Internal Errors: Internal error details are now persisted to an `error_logs` table and logged to rotating file logs; HTTP responses return generic messages in production.
 
 Recommended follow-ups: add integration tests to validate parameterization and consider periodic dependency scanning with `cargo-audit`.
+
+## CORS Configuration — Verification
+
+The server now enforces explicit origin validation when credentials are allowed. Wildcard `*` is only used when credentials are not requested by the browser. To verify:
+
+1. Ensure `CORS_ALLOWED_ORIGINS` in `.env` contains explicit origins (e.g. `http://localhost:3000,http://127.0.0.1:3000`).
+2. From a browser or tool that simulates preflight with credentials, perform an OPTIONS preflight with `Origin` header set to an allowed origin and `Access-Control-Request-Method: POST` and `withCredentials` enabled — response should include `Access-Control-Allow-Origin: <origin>` and `Access-Control-Allow-Credentials: true`.
+3. If `Origin` is not in the allowed list but `*` exists in `CORS_ALLOWED_ORIGINS`, the response will include `Access-Control-Allow-Origin: *` but will NOT include `Access-Control-Allow-Credentials`.
+
+Example curl preflight simulation (adjust origin):
+
+```bash
+curl -i -X OPTIONS http://127.0.0.1:8080/api/v1/status \
+	-H "Origin: http://localhost:3000" \
+	-H "Access-Control-Request-Method: POST"
+```
+
+Look for `Access-Control-Allow-Origin` and `Access-Control-Allow-Credentials` headers in the response.
 
 ## Session Initialization — Verification
 
