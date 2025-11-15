@@ -62,9 +62,9 @@ where
         let db_service = Arc::clone(&self.db_service);
 
         Box::pin(async move {
-            // Skip auth for certain routes
+            // Skip auth for certain public routes
             let path = req.path();
-            if path.starts_with("/health") || path.starts_with("/api/v1/status") {
+            if path.starts_with("/health") || path.starts_with("/api/v1/status") || path.starts_with("/api/v1/auth") {
                 return service.call(req).await;
             }
 

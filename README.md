@@ -164,7 +164,7 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 | ✅ | CRÍTICA | SQL Injection | Uso de concatenación de strings en consultas SQL en lugar de parámetros preparados | ✅ RESUELTA |
 | ✅ | CRÍTICA | Exposición de Información Sensible | Manejo de errores que expone detalles internos del sistema | ✅ RESUELTA |
 | ✅ | ALTA | Rate Limiting Ineficaz | Rate limiting solo por IP, fácilmente bypassable | ✅ RESUELTA |
-| ❌ | ALTA | Falta de Validación JWT | No se valida el campo JTI para prevenir replay attacks | Implementar lista negra de tokens revocados |
+| ✅ | ALTA | Falta de Validación JWT | No se valida el campo JTI para prevenir replay attacks | ✅ RESUELTA (Lista negra de JTI implementada)
 | ❌ | ALTA | Sesiones No Seguras | Campos de sesión vacíos o no inicializados correctamente | Inicializar correctamente todos los campos de sesión |
 | ❌ | MEDIA | CORS Mal Configurado | Permite credenciales con wildcard origins | Lista explícita de orígenes permitidos |
 | ❌ | MEDIA | Validación de Email Débil | Validación básica que permite emails inválidos | Usar regex robusto o librería de validación |
@@ -333,4 +333,32 @@ The two critical issues (SQL Injection and Exposure of Internal Errors) were rem
 - Exposure of Internal Errors: Internal error details are now persisted to an `error_logs` table and logged to rotating file logs; HTTP responses return generic messages in production.
 
 Recommended follow-ups: add integration tests to validate parameterization and consider periodic dependency scanning with `cargo-audit`.
+
+## Token Revocation (JTI) — Verification
+
+The server now persists revoked JWT IDs (JTI) and rejects requests using revoked tokens. Use these steps to verify locally:
+
+```bash
+# Start server
+cargo run --bin crazytrip-user-service
+
+# Register a new user (use a unique email for each run)
+curl -X POST http://127.0.0.1:8080/api/v1/auth/register \
+	-H "Content-Type: application/json" \
+	-d '{"email":"it-test+123@example.com","username":"it_test_user","password":"Password123"}'
+
+# Login and capture token
+TOKEN=$(curl -s -X POST http://127.0.0.1:8080/api/v1/auth/login \
+	-H "Content-Type: application/json" \
+	-d '{"email":"it-test+123@example.com","password":"Password123"}' | jq -r '.data.access_token')
+
+# Access protected endpoint (before logout)
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/api/v1/user/profile
+
+# Logout (this revokes the token)
+curl -X POST -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/api/v1/auth/logout
+
+# Try the same token again (should be rejected)
+curl -i -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/api/v1/user/profile
+```
 
