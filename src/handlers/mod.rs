@@ -194,7 +194,19 @@ pub async fn get_user_profile(
         None => return Ok(utils::response::error_response("Unauthorized", 401)),
     };
 
-    match user_service.get_user_profile(Uuid::parse_str(&claims.sub).unwrap()).await {
+    let user_id = match utils::validate_uuid(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            let db_clone = Arc::clone(&user_service.db);
+            let err_msg = format!("Invalid user id in token: {}", &claims.sub);
+            tokio::spawn(async move {
+                let _ = utils::log_internal_error(db_clone, "WARN", "get_user_profile", "Invalid UUID in claims.sub", Some(serde_json::json!({"error": err_msg})), None, None).await;
+            });
+            return Ok(utils::response::error_response("Unauthorized", 401));
+        }
+    };
+
+    match user_service.get_user_profile(user_id).await {
         Ok(response) => Ok(utils::response::success_response(response)),
             Err(err) => {
                 let db_clone = Arc::clone(&user_service.db);
@@ -222,7 +234,19 @@ pub async fn update_user_profile(
     let username = update_req.get("username").and_then(|v| v.as_str()).map(|s| s.to_string());
     let email = update_req.get("email").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-    match user_service.update_user_profile(Uuid::parse_str(&claims.sub).unwrap(), username, email).await {
+    let user_id = match utils::validate_uuid(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            let db_clone = Arc::clone(&user_service.db);
+            let err_msg = format!("Invalid user id in token: {}", &claims.sub);
+            tokio::spawn(async move {
+                let _ = utils::log_internal_error(db_clone, "WARN", "update_user_profile", "Invalid UUID in claims.sub", Some(serde_json::json!({"error": err_msg})), None, None).await;
+            });
+            return Ok(utils::response::error_response("Unauthorized", 401));
+        }
+    };
+
+    match user_service.update_user_profile(user_id, username, email).await {
         Ok(response) => Ok(utils::response::success_response(response)),
             Err(err) => {
                 let db_clone = Arc::clone(&user_service.db);
@@ -246,7 +270,19 @@ pub async fn deactivate_user(
         None => return Ok(utils::response::error_response("Unauthorized", 401)),
     };
 
-    match user_service.deactivate_user(Uuid::parse_str(&claims.sub).unwrap()).await {
+    let user_id = match utils::validate_uuid(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            let db_clone = Arc::clone(&user_service.db);
+            let err_msg = format!("Invalid user id in token: {}", &claims.sub);
+            tokio::spawn(async move {
+                let _ = utils::log_internal_error(db_clone, "WARN", "deactivate_user", "Invalid UUID in claims.sub", Some(serde_json::json!({"error": err_msg})), None, None).await;
+            });
+            return Ok(utils::response::error_response("Unauthorized", 401));
+        }
+    };
+
+    match user_service.deactivate_user(user_id).await {
         Ok(response) => Ok(utils::response::success_response(response)),
             Err(err) => {
                 // Log internal error and return generic message
@@ -271,7 +307,19 @@ pub async fn get_user_sessions(
         None => return Ok(utils::response::error_response("Unauthorized", 401)),
     };
 
-    match session_service.get_user_sessions(Uuid::parse_str(&claims.sub).unwrap()).await {
+    let user_id = match utils::validate_uuid(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            let db_clone = Arc::clone(&session_service.db);
+            let err_msg = format!("Invalid user id in token: {}", &claims.sub);
+            tokio::spawn(async move {
+                let _ = utils::log_internal_error(db_clone, "WARN", "get_user_sessions", "Invalid UUID in claims.sub", Some(serde_json::json!({"error": err_msg})), None, None).await;
+            });
+            return Ok(utils::response::error_response("Unauthorized", 401));
+        }
+    };
+
+    match session_service.get_user_sessions(user_id).await {
         Ok(response) => Ok(utils::response::success_response(response)),
             Err(err) => {
                 let db_clone = Arc::clone(&session_service.db);
@@ -302,7 +350,19 @@ pub async fn invalidate_session(
         Err(_) => return Ok(utils::response::error_response("Invalid session ID", 400)),
     };
 
-    match user_service.invalidate_session(Uuid::parse_str(&claims.sub).unwrap(), session_id).await {
+    let user_id = match utils::validate_uuid(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            let db_clone = Arc::clone(&user_service.db);
+            let err_msg = format!("Invalid user id in token: {}", &claims.sub);
+            tokio::spawn(async move {
+                let _ = utils::log_internal_error(db_clone, "WARN", "invalidate_session", "Invalid UUID in claims.sub", Some(serde_json::json!({"error": err_msg})), None, None).await;
+            });
+            return Ok(utils::response::error_response("Unauthorized", 401));
+        }
+    };
+
+    match user_service.invalidate_session(user_id, session_id).await {
         Ok(response) => Ok(utils::response::success_response(response)),
             Err(err) => {
                 let db_clone = Arc::clone(&user_service.db);
@@ -329,7 +389,19 @@ pub async fn invalidate_other_sessions(
     // Get current session ID from request (this would need to be implemented)
     // For now, we'll invalidate all sessions except the current one
     // This is a simplified implementation
-    match session_service.invalidate_other_sessions(Uuid::parse_str(&claims.sub).unwrap(), Uuid::nil()).await {
+    let user_id = match utils::validate_uuid(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            let db_clone = Arc::clone(&session_service.db);
+            let err_msg = format!("Invalid user id in token: {}", &claims.sub);
+            tokio::spawn(async move {
+                let _ = utils::log_internal_error(db_clone, "WARN", "invalidate_other_sessions", "Invalid UUID in claims.sub", Some(serde_json::json!({"error": err_msg})), None, None).await;
+            });
+            return Ok(utils::response::error_response("Unauthorized", 401));
+        }
+    };
+
+    match session_service.invalidate_other_sessions(user_id, Uuid::nil()).await {
         Ok(_) => {
             let response = ApiResponse::success("All other sessions invalidated successfully");
             Ok(utils::response::success_response(response))
@@ -356,7 +428,19 @@ pub async fn get_active_session_count(
         None => return Ok(utils::response::error_response("Unauthorized", 401)),
     };
 
-    match session_service.get_active_session_count(Uuid::parse_str(&claims.sub).unwrap()).await {
+    let user_id = match utils::validate_uuid(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            let db_clone = Arc::clone(&session_service.db);
+            let err_msg = format!("Invalid user id in token: {}", &claims.sub);
+            tokio::spawn(async move {
+                let _ = utils::log_internal_error(db_clone, "WARN", "get_active_session_count", "Invalid UUID in claims.sub", Some(serde_json::json!({"error": err_msg})), None, None).await;
+            });
+            return Ok(utils::response::error_response("Unauthorized", 401));
+        }
+    };
+
+    match session_service.get_active_session_count(user_id).await {
         Ok(count) => {
             let response = ApiResponse::success(serde_json::json!({ "active_sessions": count }));
             Ok(utils::response::success_response(response))
