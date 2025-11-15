@@ -89,6 +89,11 @@ impl UserService {
         // Validate refresh token
         let claims = self.auth.validate_refresh_token(refresh_token)?;
 
+        // Reject immediately if this token's JTI has already been revoked (replay protection)
+        if self.db.is_token_revoked(&claims.jti).await? {
+            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::PermissionDenied, format!("Refresh token already used or invalid"))));
+        }
+
         // Get user
         let user_id = Uuid::parse_str(&claims.sub)?;
         let user = self.db.get_user_by_id(&user_id).await?;
