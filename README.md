@@ -392,6 +392,44 @@ curl -X POST http://127.0.0.1:8080/api/v1/auth/register \
 
 If the server cuts the connection before the full payload is received and returns a 408 or similar error, timeouts are active. Logs will also reflect client request timeouts.
 
+## Security Headers — Verification
+
+The server sets additional security headers which are configurable via environment variables. Example `.env` entries:
+
+```
+# Content Security Policy (CSP)
+CONTENT_SECURITY_POLICY=default-src 'self'; script-src 'self' 'unsafe-inline'
+
+# HSTS settings
+HSTS_PRELOAD=true
+HSTS_MAX_AGE=31536000
+HSTS_INCLUDE_SUBDOMAINS=true
+
+# Referrer policy
+REFERRER_POLICY=strict-origin-when-cross-origin
+
+# Permissions policy (optional)
+PERMISSIONS_POLICY=geolocation=(), microphone=()
+```
+
+To verify headers are present, start the server and use `curl -I` (head request) or `http` to inspect response headers:
+
+```bash
+curl -i http://127.0.0.1:8080/api/v1/status | sed -n '1,40p'
+
+# Or use httpie:
+http --headers GET http://127.0.0.1:8080/api/v1/status
+```
+
+Look for headers:
+
+- `Content-Security-Policy` (if configured)
+- `Strict-Transport-Security` (HSTS)
+- `Referrer-Policy`
+- `Permissions-Policy` (if configured)
+
+If any header is missing, check your `.env` for the corresponding setting and restart the server.
+
 ## Email Validation — Verification
 
 Email validation is now done using the `validator` crate which implements robust email format checks.
