@@ -6,11 +6,6 @@ pub mod models;
 pub mod handlers;
 pub mod utils;
 
-// Re-export commonly used types for integration tests
-pub use config::*;
-pub use database::*;
-pub use auth::*;
-pub use services::*;
-pub use models::*;
-pub use handlers::*;
-pub use utils::*;
+// Note: avoid glob re-exports to prevent ambiguous symbol re-exports
+// Consumers should reference items through their module paths, e.g.:
+// `crate::models::User` or `crate::utils::PaginationParams`.

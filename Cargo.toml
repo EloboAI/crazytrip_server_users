@@ -47,6 +47,9 @@ sha2 = "0.10"
 # Random number generation
 rand = "0.9.2"
 
+# Cryptographic randomness helper used in utils.generate_random_string
+getrandom = "0.2"
+
 # HTTP client (removed - not used currently)
 # reqwest = { version = "0.11", features = ["json"] }
 

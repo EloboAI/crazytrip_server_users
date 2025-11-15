@@ -135,16 +135,18 @@ pub fn truncate_string(input: &str, max_len: usize) -> String {
 /// Generate secure random string
 #[allow(dead_code)]
 pub fn generate_random_string(length: usize) -> String {
-    use rand::Rng;
+    // no external rand crate used here; we rely on `getrandom` for secure bytes
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let mut rng = rand::thread_rng();
+    // Use `getrandom` to fill a buffer with cryptographically secure random bytes
+    let mut buf = vec![0u8; length];
+    getrandom::getrandom(&mut buf).expect("OS RNG failure");
 
-    (0..length)
-        .map(|_| {
-            let idx = rng.gen_range(0..CHARSET.len());
-            CHARSET[idx] as char
-        })
-        .collect()
+    let mut out = String::with_capacity(length);
+    for b in buf {
+        let idx = (b as usize) % CHARSET.len();
+        out.push(CHARSET[idx] as char);
+    }
+    out
 }
 
 /// Hash string using SHA-256
