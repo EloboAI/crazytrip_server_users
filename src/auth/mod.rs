@@ -242,32 +242,68 @@ pub fn extract_token_from_request(req: &impl HttpMessage) -> Option<String> {
 /// Rate limiting store (in-memory for now, should be Redis in production)
 pub struct RateLimitStore {
     requests: HashMap<String, Vec<i64>>,
+    cleanup_counter: u64,
 }
 
 impl RateLimitStore {
     pub fn new() -> Self {
         Self {
             requests: HashMap::new(),
+            cleanup_counter: 0,
         }
     }
 
+    /// Check if a request is allowed. This method also performs a periodic cleanup
+    /// of stale keys to avoid unbounded memory growth. The TTL used for keys is
+    /// `window_seconds * 4` (configurable here) and the global cleanup runs once
+    /// every 100 calls to `is_allowed`.
     pub fn is_allowed(&mut self, key: &str, max_requests: u32, window_seconds: u64) -> bool {
         let now = Utc::now().timestamp();
         let window_start = now - window_seconds as i64;
 
+        // TTL for removing entire keys if they remain inactive for long time
+        let ttl = (window_seconds as i64) * 4;
+
         let user_requests = self.requests.entry(key.to_string()).or_insert_with(Vec::new);
 
-        // Remove old requests outside the window
+        // Remove old requests outside the sliding window
         user_requests.retain(|&timestamp| timestamp > window_start);
 
         // Check if under limit
         if user_requests.len() >= max_requests as usize {
+            // Periodic cleanup to evict stale keys
+            self.maybe_run_global_cleanup(ttl);
             return false;
         }
 
         // Add current request
         user_requests.push(now);
+
+        // Periodic cleanup to evict stale keys
+        self.maybe_run_global_cleanup(ttl);
+
         true
+    }
+
+    fn maybe_run_global_cleanup(&mut self, ttl_seconds: i64) {
+        // Increment counter and run full cleanup occasionally
+        self.cleanup_counter = self.cleanup_counter.wrapping_add(1);
+        if self.cleanup_counter % 100 != 0 {
+            return;
+        }
+
+        let now = Utc::now().timestamp();
+        // Remove keys whose last request is older than TTL
+        self.requests.retain(|_, timestamps| {
+            if timestamps.is_empty() {
+                return false;
+            }
+            // Use the last recorded timestamp as most recent activity
+            if let Some(&last) = timestamps.last() {
+                return last + ttl_seconds > now;
+            }
+            false
+        });
     }
 
     #[allow(dead_code)]
