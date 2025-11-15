@@ -170,6 +170,7 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 | ✅ | MEDIA | Validación de Email Débil | Validación básica que permite emails inválidos | ✅ RESUELTA (Se usa `validator` para validación de emails en payloads) |
 | ✅ | MEDIA | Falta de Logging Seguro | Logging de información potencialmente sensible | ✅ RESUELTA (Se sanitizan y enmascaran campos sensibles antes de loggear) |
 | ✅ | MEDIA | Timeouts No Configurados | Sin timeouts configurados para requests | ✅ RESUELTA (Timeouts configurables para keep-alive, request read, and shutdown) |
+| ✅ | MEDIA | Headers de Seguridad Incompletos | Falta CSP, HSTS preload y otros headers importantes | ✅ RESUELTA (Se agregaron CSP, HSTS, Referrer-Policy y Permissions-Policy configurables) |
 | ❌ | MEDIA | Headers de Seguridad Incompletos | Falta CSP, HSTS preload y otros headers importantes | Agregar headers de seguridad adicionales |
 | ❌ | MEDIA | Dependencias Vulnerables | Librerías no mantenidas con bugs de seguridad | Remover dependencias no usadas o actualizar |
 | ❌ | BAJA | Secrets en Variables de Entorno | JWT_SECRET puede estar sin protección | Usar secret management seguro (Vault, AWS Secrets Manager) |
