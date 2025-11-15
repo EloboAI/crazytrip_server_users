@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use validator::Validate;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -42,17 +43,25 @@ pub struct Session {
 }
 
 /// Login request payload
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct LoginRequest {
+    #[validate(email(message = "Invalid email format"))]
     pub email: String,
+
+    #[validate(length(min = 8, message = "Password must be at least 8 characters"))]
     pub password: String,
 }
 
 /// Register request payload
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct RegisterRequest {
+    #[validate(email(message = "Invalid email format"))]
     pub email: String,
+
+    #[validate(length(min = 3, max = 50, message = "Username must be 3-50 characters"))]
     pub username: String,
+
+    #[validate(length(min = 8, message = "Password must be at least 8 characters"))]
     pub password: String,
 }
 

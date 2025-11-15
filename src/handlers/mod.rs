@@ -7,6 +7,7 @@ use crate::auth::{AuthService, Claims};
 use crate::models::{ApiResponse, LoginRequest, RegisterRequest};
 use crate::services::{UserService, SessionService};
 use crate::utils;
+use validator::Validate;
 
 /// Health check endpoint
 pub async fn health_check() -> Result<HttpResponse> {
@@ -28,7 +29,13 @@ pub async fn register_user(
     req: web::Json<RegisterRequest>,
     user_service: web::Data<Arc<UserService>>,
 ) -> Result<HttpResponse> {
-    match user_service.register_user(req.into_inner()).await {
+    let r = req.into_inner();
+    if let Err(e) = r.validate() {
+        let msgs = flatten_validation_errors(e);
+        return Ok(utils::response::validation_error_response(msgs));
+    }
+
+    match user_service.register_user(r).await {
         Ok(response) => Ok(utils::response::success_response(response)),
         Err(err) => Ok(utils::response::error_response(&err.to_string().as_str(), 400)),
     }
@@ -39,13 +46,34 @@ pub async fn login_user(
     req: web::Json<LoginRequest>,
     user_service: web::Data<Arc<UserService>>,
 ) -> Result<HttpResponse> {
-    match user_service.login_user(req.into_inner()).await {
+    let r = req.into_inner();
+    if let Err(e) = r.validate() {
+        let msgs = flatten_validation_errors(e);
+        return Ok(utils::response::validation_error_response(msgs));
+    }
+
+    match user_service.login_user(r).await {
         Ok(response) => Ok(utils::response::success_response(response)),
         Err(err) => {
             let status = if err.to_string().contains("password") || err.to_string().contains("Invalid email or password") { 401 } else { 400 };
             Ok(utils::response::error_response(&err.to_string().as_str(), status))
         }
     }
+}
+
+fn flatten_validation_errors(err: validator::ValidationErrors) -> Vec<String> {
+    let mut msgs = Vec::new();
+    for (field, errors) in err.field_errors().iter() {
+        for e in errors.iter() {
+            let message = if let Some(m) = &e.message {
+                m.to_string()
+            } else {
+                format!("{} {}", field, e.code)
+            };
+            msgs.push(message);
+        }
+    }
+    msgs
 }
 
 /// Refresh token endpoint
