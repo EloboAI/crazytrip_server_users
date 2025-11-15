@@ -29,10 +29,10 @@ impl UserService {
         self.validate_registration_request(&req)?;
 
         // Check if user already exists
-        if self.db.get_user_by_email(&req.email).await.is_ok() {
+        if let Some(_) = self.db.get_user_by_email(&req.email).await? {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("User with this email already exists"),
+                "User with this email already exists".to_string(),
             )));
         }
 
