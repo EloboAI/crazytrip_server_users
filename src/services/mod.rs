@@ -226,7 +226,8 @@ impl UserService {
     /// Validate login request
     fn validate_login_request(&self, req: &LoginRequest) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Use validator crate for email validation
-        if !validator::validate_email(&req.email) {
+        // Basic email sanity check: contains '@' and a '.' in domain part
+        if !req.email.contains('@') || req.email.len() > 254 || !req.email.split('@').nth(1).unwrap_or("").contains('.') {
             return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid email format"))));
         }
         if req.password.is_empty() {
@@ -240,11 +241,11 @@ impl UserService {
         if email.is_empty() {
             return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Email is required"))));
         }
-        if !validator::validate_email(email) {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid email format"))));
-        }
         if email.len() > 254 {
             return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Email too long"))));
+        }
+        if !email.contains('@') || !email.split('@').nth(1).unwrap_or("").contains('.') {
+            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid email format"))));
         }
         Ok(())
     }
