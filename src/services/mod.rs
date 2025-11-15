@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use chrono::Utc;
+use chrono::{Utc, TimeZone};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -106,10 +106,20 @@ impl UserService {
 
         // Invalidate old session (by refresh token hash)
         let old_refresh_hash = self.auth.hash_token(refresh_token)?;
-        self.db.invalidate_session_by_refresh_token_hash(&old_refresh_hash).await?;
+        let affected = self.db.invalidate_session_by_refresh_token_hash(&old_refresh_hash).await?;
+
+        // If no rows were affected, the refresh token was already used or does not exist
+        if affected == 0 {
+            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::PermissionDenied, format!("Refresh token already used or invalid"))));
+        }
 
         // Generate new tokens
         let tokens = self.auth.generate_tokens(&user)?;
+
+        // After invalidating the previous session, revoke the refresh token JTI to prevent reuse
+        // Map claims.jti to revoked_tokens with the refresh expiry
+        let refresh_expires = chrono::Utc.timestamp_opt(claims.exp, 0).single();
+        let _ = self.db.revoke_token(&claims.jti, refresh_expires).await;
 
         // Build session using AuthService helper and populate token hashes and metadata
         let mut session = self.auth.create_session(&user, ip_address, user_agent);

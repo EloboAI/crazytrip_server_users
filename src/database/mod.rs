@@ -361,14 +361,14 @@ impl DatabaseService {
     }
 
     /// Invalidate session by refresh token hash
-    pub async fn invalidate_session_by_refresh_token_hash(&self, refresh_token_hash: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn invalidate_session_by_refresh_token_hash(&self, refresh_token_hash: &str) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
         let client = self.get_client().await?;
 
-        client.execute("
+        let result = client.execute("
             UPDATE sessions SET is_active = false WHERE refresh_token_hash = $1
         ", &[&refresh_token_hash]).await?;
 
-        Ok(())
+        Ok(result)
     }
 
     /// Invalidate session by access token hash
