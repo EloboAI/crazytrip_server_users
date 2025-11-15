@@ -128,7 +128,17 @@ pub async fn refresh_token(
 
     match user_service.refresh_token(refresh_token, &ip, ua.as_deref()).await {
         Ok(response) => Ok(utils::response::success_response(response)),
-        Err(err) => Ok(utils::response::error_response(&err.to_string().as_str(), 401)),
+            Err(err) => {
+                // Log internal error details asynchronously
+                let db_clone = Arc::clone(&user_service.db);
+                let err_str = err.to_string();
+                tokio::spawn(async move {
+                    let _ = utils::log_internal_error(db_clone, "WARN", "refresh_token", "Refresh token exchange failed", Some(serde_json::json!({"error": err_str})), None, None).await;
+                });
+
+                // Return a generic unauthorized message
+                Ok(utils::response::error_response("Invalid or expired refresh token", 401))
+            }
     }
 }
 
@@ -162,7 +172,15 @@ pub async fn logout_user(
 
             Ok(utils::response::success_response(response))
         }
-        Err(err) => Ok(utils::response::error_response(&err.to_string().as_str(), 400)),
+            Err(err) => {
+                let db_clone = Arc::clone(&user_service.db);
+                let err_str = err.to_string();
+                tokio::spawn(async move {
+                    let _ = utils::log_internal_error(db_clone, "ERROR", "logout_user", "Failed to logout user", Some(serde_json::json!({"error": err_str})), None, None).await;
+                });
+
+                Ok(utils::response::error_response("Could not logout user", 400))
+            },
     }
 }
 
@@ -178,7 +196,15 @@ pub async fn get_user_profile(
 
     match user_service.get_user_profile(Uuid::parse_str(&claims.sub).unwrap()).await {
         Ok(response) => Ok(utils::response::success_response(response)),
-        Err(err) => Ok(utils::response::error_response(&err.to_string().as_str(), 404)),
+            Err(err) => {
+                let db_clone = Arc::clone(&user_service.db);
+                let err_str = err.to_string();
+                tokio::spawn(async move {
+                    let _ = utils::log_internal_error(db_clone, "ERROR", "get_user_profile", "Failed to get user profile", Some(serde_json::json!({"error": err_str})), None, None).await;
+                });
+
+                Ok(utils::response::error_response("User not found", 404))
+            }
     }
 }
 
@@ -198,7 +224,15 @@ pub async fn update_user_profile(
 
     match user_service.update_user_profile(Uuid::parse_str(&claims.sub).unwrap(), username, email).await {
         Ok(response) => Ok(utils::response::success_response(response)),
-        Err(err) => Ok(utils::response::error_response(&err.to_string().as_str(), 400)),
+            Err(err) => {
+                let db_clone = Arc::clone(&user_service.db);
+                let err_str = err.to_string();
+                tokio::spawn(async move {
+                    let _ = utils::log_internal_error(db_clone, "ERROR", "update_user_profile", "Failed to update user profile", Some(serde_json::json!({"error": err_str})), None, None).await;
+                });
+
+                Ok(utils::response::error_response("Failed to update profile", 400))
+            }
     }
 }
 
@@ -214,7 +248,16 @@ pub async fn deactivate_user(
 
     match user_service.deactivate_user(Uuid::parse_str(&claims.sub).unwrap()).await {
         Ok(response) => Ok(utils::response::success_response(response)),
-        Err(err) => Ok(utils::response::error_response(&err.to_string().as_str(), 400)),
+            Err(err) => {
+                // Log internal error and return generic message
+                let db_clone = Arc::clone(&user_service.db);
+                let err_str = err.to_string();
+                tokio::spawn(async move {
+                    let _ = utils::log_internal_error(db_clone, "ERROR", "deactivate_user", "Failed to deactivate user", Some(serde_json::json!({"error": err_str})), None, None).await;
+                });
+
+                Ok(utils::response::error_response("Failed to deactivate account", 400))
+            }
     }
 }
 
@@ -230,7 +273,15 @@ pub async fn get_user_sessions(
 
     match session_service.get_user_sessions(Uuid::parse_str(&claims.sub).unwrap()).await {
         Ok(response) => Ok(utils::response::success_response(response)),
-        Err(err) => Ok(utils::response::error_response(&err.to_string().as_str(), 500)),
+            Err(err) => {
+                let db_clone = Arc::clone(&session_service.db);
+                let err_str = err.to_string();
+                tokio::spawn(async move {
+                    let _ = utils::log_internal_error(db_clone, "ERROR", "get_user_sessions", "Failed to fetch user sessions", Some(serde_json::json!({"error": err_str})), None, None).await;
+                });
+
+                Ok(utils::response::error_response("Failed to retrieve sessions", 500))
+            }
     }
 }
 
@@ -253,7 +304,15 @@ pub async fn invalidate_session(
 
     match user_service.invalidate_session(Uuid::parse_str(&claims.sub).unwrap(), session_id).await {
         Ok(response) => Ok(utils::response::success_response(response)),
-        Err(err) => Ok(utils::response::error_response(&err.to_string().as_str(), 400)),
+            Err(err) => {
+                let db_clone = Arc::clone(&user_service.db);
+                let err_str = err.to_string();
+                tokio::spawn(async move {
+                    let _ = utils::log_internal_error(db_clone, "ERROR", "invalidate_session", "Failed to invalidate session", Some(serde_json::json!({"error": err_str})), None, None).await;
+                });
+
+                Ok(utils::response::error_response("Failed to invalidate session", 400))
+            }
     }
 }
 
@@ -275,7 +334,15 @@ pub async fn invalidate_other_sessions(
             let response = ApiResponse::success("All other sessions invalidated successfully");
             Ok(utils::response::success_response(response))
         }
-        Err(err) => Ok(utils::response::error_response(&err.to_string(), 500)),
+            Err(err) => {
+                let db_clone = Arc::clone(&session_service.db);
+                let err_str = err.to_string();
+                tokio::spawn(async move {
+                    let _ = utils::log_internal_error(db_clone, "ERROR", "invalidate_other_sessions", "Failed to invalidate other sessions", Some(serde_json::json!({"error": err_str})), None, None).await;
+                });
+
+                Ok(utils::response::error_response("Failed to invalidate other sessions", 500))
+            }
     }
 }
 
@@ -294,7 +361,15 @@ pub async fn get_active_session_count(
             let response = ApiResponse::success(serde_json::json!({ "active_sessions": count }));
             Ok(utils::response::success_response(response))
         }
-        Err(err) => Ok(utils::response::error_response(&err.to_string(), 500)),
+            Err(err) => {
+                let db_clone = Arc::clone(&session_service.db);
+                let err_str = err.to_string();
+                tokio::spawn(async move {
+                    let _ = utils::log_internal_error(db_clone, "ERROR", "get_active_session_count", "Failed to get active session count", Some(serde_json::json!({"error": err_str})), None, None).await;
+                });
+
+                Ok(utils::response::error_response("Failed to get active session count", 500))
+            }
     }
 }
 
