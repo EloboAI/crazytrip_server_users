@@ -132,10 +132,13 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 - `DATABASE_MAX_CONNECTIONS`: Connection pool size
 
 ### Authentication Configuration
-- `AUTH_JWT_SECRET`: JWT signing secret (min 32 characters)
+- `AUTH_JWT_SECRET`: JWT signing secret (**REQUIRED**: ≥256 bits / 32 bytes)
+  - Generate with: `openssl rand -hex 32` (64 hex chars) OR `openssl rand -base64 32` (44 base64 chars)
+  - **Quantum-safe**: 256-bit keys provide 128-bit post-quantum security
+  - Must be kept secret and rotated periodically
 - `AUTH_ACCESS_TOKEN_EXPIRATION_MINUTES`: Access token lifetime
 - `AUTH_REFRESH_TOKEN_EXPIRATION_HOURS`: Refresh token lifetime
-- `AUTH_BCRYPT_COST`: Password hashing cost
+- `AUTH_BCRYPT_COST`: Password hashing cost (default: 12)
 
 ### Security Configuration
 - `SECURITY_CORS_ALLOWED_ORIGINS`: Comma-separated allowed origins
@@ -146,6 +149,10 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 ## Security Features
 
 - **JWT Authentication**: Stateless authentication with access/refresh tokens
+  - **Current version**: `jsonwebtoken 10.2.0` with `aws_lc_rs` crypto backend
+  - **Algorithm**: HS256 (HMAC-SHA256) - **Quantum-safe** ✅
+  - **Post-quantum security**: 128-bit quantum resistance (sufficient for Q-Day)
+  - See [UPGRADE_JSONWEBTOKEN_10.md](./UPGRADE_JSONWEBTOKEN_10.md) for migration details
 - **Password Security**: bcrypt hashing with configurable cost
 - **Rate Limiting**: Configurable request limits per IP
 - **CORS Protection**: Configurable allowed origins
@@ -153,6 +160,7 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 - **Input Validation**: Comprehensive request validation
 - **SQL Injection Protection**: Parameterized queries
 - **Session Management**: Automatic cleanup of expired sessions
+- **Dependency Scanning**: Regular `cargo audit` checks (0 vulnerabilities)
 
 ## 🔒 Security Audit - Identified Vulnerabilities
 
