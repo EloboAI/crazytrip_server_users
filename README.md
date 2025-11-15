@@ -168,7 +168,7 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 | ✅ | ALTA | Sesiones No Seguras | Campos de sesión vacíos o no inicializados correctamente | ✅ RESUELTA (Se inicializan `token_hash`, `refresh_token_hash`, `ip_address`, `user_agent`, `expires_at`) |
 | ✅ | MEDIA | CORS Mal Configurado | Permite credenciales con wildcard origins | ✅ RESUELTA (Se requiere origen explícito para `Access-Control-Allow-Credentials`, wildcard solo permitido sin credenciales) |
 | ✅ | MEDIA | Validación de Email Débil | Validación básica que permite emails inválidos | ✅ RESUELTA (Se usa `validator` para validación de emails en payloads) |
-| ❌ | MEDIA | Falta de Logging Seguro | Logging de información potencialmente sensible | Sanitizar datos antes de loggear |
+| ✅ | MEDIA | Falta de Logging Seguro | Logging de información potencialmente sensible | ✅ RESUELTA (Se sanitizan y enmascaran campos sensibles antes de loggear) |
 | ❌ | MEDIA | Timeouts No Configurados | Sin timeouts configurados para requests | Configurar timeouts apropiados |
 | ❌ | MEDIA | Headers de Seguridad Incompletos | Falta CSP, HSTS preload y otros headers importantes | Agregar headers de seguridad adicionales |
 | ❌ | MEDIA | Dependencias Vulnerables | Librerías no mantenidas con bugs de seguridad | Remover dependencias no usadas o actualizar |
@@ -333,6 +333,32 @@ The two critical issues (SQL Injection and Exposure of Internal Errors) were rem
 - Exposure of Internal Errors: Internal error details are now persisted to an `error_logs` table and logged to rotating file logs; HTTP responses return generic messages in production.
 
 Recommended follow-ups: add integration tests to validate parameterization and consider periodic dependency scanning with `cargo-audit`.
+
+## Logging — Secure Logging Verification
+
+The server now sanitizes potentially sensitive fields before writing to logs or the `error_logs` table. Common fields masked: `password`, `token`, `access_token`, `refresh_token`, `authorization`, `auth`, and `email`.
+
+To verify:
+
+1. Trigger an internal error that includes a token or password in the payload (use a test endpoint or simulate via a curl to an endpoint that logs details).
+
+2. Inspect logs (file or stdout) — you should see masked values like `abcd***wxyz` or `it***@example.com` instead of full secrets.
+
+Example:
+
+```bash
+# Trigger an error with sensitive data (example payload)
+curl -X POST http://127.0.0.1:8080/api/v1/debug/log-error \
+	-H "Content-Type: application/json" \
+	-d '{"message":"test error","token":"very-long-secret-token-12345","email":"private@example.com"}'
+
+# Check recent error_logs in psql (adjust connection params)
+psql -c "SELECT created_at, severity, category, message, details FROM error_logs ORDER BY created_at DESC LIMIT 5;"
+
+# Check stdout/file logger (where flexi_logger writes). You should NOT see full token or password values in the log output.
+```
+
+If you see unmasked tokens or passwords in logs, please open an issue and include the example payload you used (avoid posting real secrets).
 
 ## Email Validation — Verification
 

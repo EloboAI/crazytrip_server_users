@@ -92,6 +92,36 @@ pub fn sanitize_string(input: &str) -> String {
     input.trim().to_string()
 }
 
+/// Mask sensitive values partially (e.g., tokens, emails, passwords)
+pub fn mask_sensitive(value: &str) -> String {
+    if value.is_empty() {
+        return "".to_string();
+    }
+
+    // If it looks like an email, mask local part
+    if let Some(idx) = value.find('@') {
+        let (local, domain) = value.split_at(idx);
+        let domain = &domain[1..];
+        let visible = if local.len() <= 2 { 1 } else { 2 };
+        let mut out = String::new();
+        out.push_str(&local[..visible.min(local.len())]);
+        out.push_str("***");
+        out.push('@');
+        out.push_str(domain);
+        return out;
+    }
+
+    // For short strings, show only first character
+    if value.len() <= 4 {
+        return format!("{}***", &value[..1]);
+    }
+
+    // Otherwise show first 4 and last 4 characters
+    let start = &value[..4];
+    let end = &value[value.len().saturating_sub(4)..];
+    format!("{}***{}", start, end)
+}
+
 /// Truncate string to maximum length
 #[allow(dead_code)]
 pub fn truncate_string(input: &str, max_len: usize) -> String {
@@ -354,10 +384,32 @@ use std::sync::Arc;
 
 /// Log internal error details to database and to logger, return the inserted error ID.
 pub async fn log_internal_error(db: Arc<crate::database::DatabaseService>, severity: &str, category: &str, message: &str, details: Option<serde_json::Value>, request_id: Option<&str>, user_id: Option<uuid::Uuid>) -> Result<uuid::Uuid, Box<dyn std::error::Error + Send + Sync>> {
-    // Log to stdout/file logger with full details
-    log::error!("[{}] {}: {} - details: {:?} request_id: {:?} user_id: {:?}", severity, category, message, details, request_id, user_id);
+    // Sanitize details before logging to avoid leaking sensitive info
+    let sanitized_details = details.and_then(|d| {
+        match d {
+            serde_json::Value::Object(mut map) => {
+                // iterate keys and mask commonly sensitive fields
+                for key in ["password", "token", "access_token", "refresh_token", "authorization", "auth", "email"].iter() {
+                    if let Some(v) = map.get_mut(*key) {
+                        if let Some(s) = v.as_str() {
+                            *v = serde_json::Value::String(mask_sensitive(s));
+                        }
+                    }
+                }
+                Some(serde_json::Value::Object(map))
+            }
+            // For arrays or strings, attempt a safe redact by converting to string and masking
+            other => {
+                let s = other.to_string();
+                Some(serde_json::Value::String(truncate_string(&mask_sensitive(&s), 1024)))
+            }
+        }
+    });
 
-    // Insert into database error_logs
-    let id = db.insert_error_log(severity, category, message, details, request_id, user_id).await?;
+    // Log sanitized details to stdout/file logger
+    log::error!("[{}] {}: {} - details: {:?} request_id: {:?} user_id: {:?}", severity, category, message, sanitized_details, request_id, user_id);
+
+    // Insert into database error_logs using sanitized details
+    let id = db.insert_error_log(severity, category, message, sanitized_details, request_id, user_id).await?;
     Ok(id)
 }
