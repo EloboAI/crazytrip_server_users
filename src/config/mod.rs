@@ -52,6 +52,16 @@ pub struct SecurityConfig {
     pub max_request_size_bytes: usize,
     pub allowed_file_types: Vec<String>,
     pub max_file_size_bytes: usize,
+    // Content Security Policy header value (optional)
+    pub content_security_policy: Option<String>,
+    // HSTS preload and extra directives
+    pub hsts_preload: bool,
+    pub hsts_max_age_seconds: u64,
+    pub hsts_include_subdomains: bool,
+    // Referrer policy
+    pub referrer_policy: String,
+    // Permissions-Policy / Feature-Policy header
+    pub permissions_policy: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,6 +172,12 @@ impl AppConfig {
                     .unwrap_or_else(|_| "5242880".to_string()) // 5MB
                     .parse()
                     .expect("MAX_FILE_SIZE_BYTES must be a valid number"),
+                content_security_policy: env::var("CONTENT_SECURITY_POLICY").ok(),
+                hsts_preload: env::var("HSTS_PRELOAD").unwrap_or_else(|_| "false".to_string()).to_lowercase() == "true",
+                hsts_max_age_seconds: env::var("HSTS_MAX_AGE").unwrap_or_else(|_| "31536000".to_string()).parse().unwrap_or(31536000u64),
+                hsts_include_subdomains: env::var("HSTS_INCLUDE_SUBDOMAINS").unwrap_or_else(|_| "true".to_string()).to_lowercase() == "true",
+                referrer_policy: env::var("REFERRER_POLICY").unwrap_or_else(|_| "strict-origin-when-cross-origin".to_string()),
+                permissions_policy: env::var("PERMISSIONS_POLICY").ok(),
             },
             logging: LoggingConfig {
                 level: env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),

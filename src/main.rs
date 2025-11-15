@@ -123,7 +123,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(Arc::clone(&session_service)))
 
             // Custom middleware (applied before compression to work with original body types)
-            .wrap(SecurityHeadersMiddleware)
             .wrap(LoggingMiddleware)
             .wrap(RequestSizeLimitMiddleware {
                 max_size: config.security.max_request_size_bytes,
@@ -137,6 +136,15 @@ async fn main() -> std::io::Result<()> {
             .wrap(CorsMiddleware {
                 allowed_origins: config.security.cors_allowed_origins.clone(),
             })
+            .wrap(SecurityHeadersMiddleware {
+                content_security_policy: config.security.content_security_policy.clone(),
+                hsts_preload: config.security.hsts_preload,
+                hsts_max_age_seconds: config.security.hsts_max_age_seconds,
+                hsts_include_subdomains: config.security.hsts_include_subdomains,
+                referrer_policy: config.security.referrer_policy.clone(),
+                permissions_policy: config.security.permissions_policy.clone(),
+            })
+
             .wrap(AuthMiddleware {
                 auth_service: Arc::clone(&auth_service),
                 db_service: Arc::clone(&db_service),
