@@ -113,18 +113,28 @@ fn flatten_validation_errors(err: validator::ValidationErrors) -> Vec<String> {
 
 /// Refresh token endpoint
 pub async fn refresh_token(
-    req: web::Json<serde_json::Value>,
+    http_req: HttpRequest,
+    body: web::Json<serde_json::Value>,
     user_service: web::Data<Arc<UserService>>,
 ) -> Result<HttpResponse> {
-    let refresh_token = match req.get("refresh_token").and_then(|v| v.as_str()) {
+    let refresh_token = match body.get("refresh_token").and_then(|v| v.as_str()) {
         Some(token) => token,
         None => return Ok(utils::response::error_response("Refresh token is required", 400)),
     };
 
-    // Extract request metadata if available from the JSON body (handlers may call this without HttpRequest in some cases)
-    // Fallback to unknown if not provided.
-    let ip = req.get("ip_address").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "unknown".to_string());
-    let ua = req.get("user_agent").and_then(|v| v.as_str()).map(|s| s.to_string());
+    // Prefer IP/User-Agent extracted from the HttpRequest; fall back to JSON body values if absent
+    let ip = http_req
+        .peer_addr()
+        .map(|addr| addr.ip().to_string())
+        .or_else(|| body.get("ip_address").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let ua = http_req
+        .headers()
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .or_else(|| body.get("user_agent").and_then(|v| v.as_str()).map(|s| s.to_string()));
 
     match user_service.refresh_token(refresh_token, &ip, ua.as_deref()).await {
         Ok(response) => Ok(utils::response::success_response(response)),
