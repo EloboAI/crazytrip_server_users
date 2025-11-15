@@ -161,8 +161,8 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 | ✅ | Estado | Nombre | Descripción | Recomendación |
 |----|--------|--------|-------------|---------------|
 | ✅ | CRÍTICA | Confusión de nombres con crate vulnerable | El proyecto se llamaba `users` igual que un crate público vulnerable. Se cambió el nombre del crate a `crazytrip-user-service` | ✅ RESUELTA |
-| ❌ | CRÍTICA | SQL Injection | Uso de concatenación de strings en consultas SQL en lugar de parámetros preparados | Implementar validación de entrada robusta con librerías como `validator` |
-| ❌ | CRÍTICA | Exposición de Información Sensible | Manejo de errores que expone detalles internos del sistema | Usar mensajes de error genéricos en producción |
+| ✅ | CRÍTICA | SQL Injection | Uso de concatenación de strings en consultas SQL en lugar de parámetros preparados | ✅ RESUELTA |
+| ✅ | CRÍTICA | Exposición de Información Sensible | Manejo de errores que expone detalles internos del sistema | ✅ RESUELTA |
 | ❌ | ALTA | Rate Limiting Ineficaz | Rate limiting solo por IP, fácilmente bypassable | Implementar rate limiting por usuario + IP con tokens de API |
 | ❌ | ALTA | Falta de Validación JWT | No se valida el campo JTI para prevenir replay attacks | Implementar lista negra de tokens revocados |
 | ❌ | ALTA | Sesiones No Seguras | Campos de sesión vacíos o no inicializados correctamente | Inicializar correctamente todos los campos de sesión |
@@ -176,7 +176,7 @@ The server is configured via environment variables. Copy `.env.example` to `.env
 | ❌ | BAJA | Configuración por Defecto Insegura | Valores por defecto demasiado permisivos | Valores más restrictivos por defecto |
 
 ### Security Status
-- 🔴 **CRÍTICO**: 4 vulnerabilidades requieren atención inmediata
+- 🔴 **CRÍTICO**: 2 vulnerabilidades requieren atención inmediata
 - 🟡 **ALTO**: 3 vulnerabilidades requieren corrección prioritaria  
 - 🟠 **MEDIO**: 4 vulnerabilidades deben ser abordadas
 - 🟢 **BAJO**: 2 vulnerabilidades pueden ser corregidas posteriormente
@@ -325,16 +325,12 @@ RUST_LOG=debug RUST_BACKTRACE=1 cargo run --bin crazytrip-user-service
 	- The server contains a development convenience call to `init_schema()` on startup which ensures the required tables exist. In production, prefer running migration scripts instead of auto-creating schema at startup.
 	- If port 8080 is already in use, find and stop the process with `lsof -iTCP:8080 -sTCP:LISTEN` then `kill <PID>`.
 
-## Security: SQL Injection — Audit and Remediation
+## Security Audit Summary
 
-I performed a manual audit of the codebase to find and remediate obvious SQL injection risks. Changes and findings:
+The two critical issues (SQL Injection and Exposure of Internal Errors) were remediated:
 
-- All database queries in `src/database/mod.rs` use parameterized queries (`$1`, `$2`, ...) and pass parameters via the client API — this prevents injection via values.
-- The helper `create_db` previously built a `CREATE DATABASE` statement using `format!`. I replaced that with a strict validation of the identifier (allowlist of ASCII alnum + `_`) before formatting the SQL, preventing injection via database name.
-- I fixed `init_schema()` SQL so it does not use invalid SQL constructs and added `pgcrypto` extension usage to safely use `gen_random_uuid()`.
+- SQL Injection: All DB queries use parameterized queries and input validation was added for identifier use-cases; helper scripts no longer build raw SQL from untrusted data.
+- Exposure of Internal Errors: Internal error details are now persisted to an `error_logs` table and logged to rotating file logs; HTTP responses return generic messages in production.
 
-Recommended next steps (optional):
-
-- Add an integration test that sends specially crafted input containing quotes, semicolons, and typical SQL payload characters to relevant public functions to ensure queries are always parameterized.
-- Consider integrating `semgrep` or a tree-sitter based static analysis for higher-precision scanning if you want automated checks in CI.
+Recommended follow-ups: add integration tests to validate parameterization and consider periodic dependency scanning with `cargo-audit`.
 
