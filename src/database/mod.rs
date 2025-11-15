@@ -92,8 +92,47 @@ impl DatabaseService {
         client.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)", &[]).await?;
         client.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)", &[]).await?;
 
+        // Create error_logs table for server-side error auditing
+        client.execute("\
+            CREATE TABLE IF NOT EXISTS error_logs (\
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
+                occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\
+                severity VARCHAR(20) NOT NULL,\
+                category VARCHAR(100) NOT NULL,\
+                message TEXT NOT NULL,\
+                details JSONB,\
+                request_id VARCHAR(100),\
+                user_id UUID NULL\
+            )\
+        ", &[]).await?;
+
+        client.execute("CREATE INDEX IF NOT EXISTS idx_error_logs_severity ON error_logs(severity)", &[]).await?;
+        client.execute("CREATE INDEX IF NOT EXISTS idx_error_logs_occurred_at ON error_logs(occurred_at)", &[]).await?;
+        client.execute("CREATE INDEX IF NOT EXISTS idx_error_logs_category ON error_logs(category)", &[]).await?;
+
         log::info!("Database schema initialized");
         Ok(())
+    }
+
+    /// Insert an error log record
+    pub async fn insert_error_log(&self, severity: &str, category: &str, message: &str, details: Option<serde_json::Value>, request_id: Option<&str>, user_id: Option<Uuid>) -> Result<Uuid, Box<dyn std::error::Error + Send + Sync>> {
+        let client = self.get_client().await?;
+
+        let id = Uuid::new_v4();
+        client.execute("\
+            INSERT INTO error_logs (id, severity, category, message, details, request_id, user_id)\
+            VALUES ($1, $2, $3, $4, $5, $6, $7)\
+        ", &[
+            &id,
+            &severity,
+            &category,
+            &message,
+            &details,
+            &request_id,
+            &user_id,
+        ]).await?;
+
+        Ok(id)
     }
 
     /// Create a new user

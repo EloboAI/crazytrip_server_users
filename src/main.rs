@@ -28,11 +28,21 @@ async fn main() -> std::io::Result<()> {
     // Load configuration
     let config = AppConfig::from_env().expect("Failed to load configuration");
 
-    // Initialize logging
-    env_logger::builder()
-        .filter_level(utils::logging::level_from_string(&config.logging.level))
-        .format_timestamp_secs()
-        .init();
+    // Initialize logging: file + stdout (rotating file)
+    // Try to initialize flexi_logger to write to a logs directory; fall back to env_logger
+    if let Ok(logger) = flexi_logger::Logger::try_with_str(config.logging.level.clone()) {
+        let file_spec = flexi_logger::FileSpec::default().directory("logs").suppress_timestamp();
+        let _ = logger
+            .log_to_file(file_spec)
+            .duplicate_to_stdout(flexi_logger::Duplicate::Info)
+            .start();
+    } else {
+        let log_level = utils::logging::level_from_string(&config.logging.level);
+        env_logger::builder()
+            .filter_level(log_level)
+            .format_timestamp_secs()
+            .init();
+    }
 
     log::info!("Starting CrazyTrip User Session Server v{}", env!("CARGO_PKG_VERSION"));
     log::info!("Server: {}:{}", config.server.host, config.server.port);
@@ -82,6 +92,7 @@ async fn main() -> std::io::Result<()> {
 
     // Clone services for background tasks
     let session_service_bg = Arc::clone(&session_service);
+    let db_for_bg = Arc::clone(&db_service);
 
     // Spawn background task for session cleanup
     tokio::spawn(async move {
@@ -90,6 +101,12 @@ async fn main() -> std::io::Result<()> {
             interval.tick().await;
             if let Err(e) = session_service_bg.cleanup_expired_sessions().await {
                 log::error!("Failed to cleanup expired sessions: {}", e);
+                // Persist error to DB for auditing
+                let db_clone = Arc::clone(&db_for_bg);
+                let err_str = e.to_string();
+                tokio::spawn(async move {
+                    let _ = utils::log_internal_error(db_clone, "ERROR", "cleanup_expired_sessions", "Failed to cleanup expired sessions", Some(serde_json::json!({"error": err_str})), None, None).await;
+                });
             } else {
                 log::info!("Cleaned up expired sessions");
             }

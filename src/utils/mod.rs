@@ -349,3 +349,15 @@ pub mod response {
         json_response(serde_json::json!({"errors": errors}), 400)
     }
 }
+
+use std::sync::Arc;
+
+/// Log internal error details to database and to logger, return the inserted error ID.
+pub async fn log_internal_error(db: Arc<crate::database::DatabaseService>, severity: &str, category: &str, message: &str, details: Option<serde_json::Value>, request_id: Option<&str>, user_id: Option<uuid::Uuid>) -> Result<uuid::Uuid, Box<dyn std::error::Error + Send + Sync>> {
+    // Log to stdout/file logger with full details
+    log::error!("[{}] {}: {} - details: {:?} request_id: {:?} user_id: {:?}", severity, category, message, details, request_id, user_id);
+
+    // Insert into database error_logs
+    let id = db.insert_error_log(severity, category, message, details, request_id, user_id).await?;
+    Ok(id)
+}

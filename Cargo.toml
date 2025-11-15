@@ -23,6 +23,7 @@ futures-util = "0.3"
 # Logging
 env_logger = "0.10"
 log = "0.4"
+flexi_logger = "0.23"
 
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }

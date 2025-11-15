@@ -37,7 +37,18 @@ pub async fn register_user(
 
     match user_service.register_user(r).await {
         Ok(response) => Ok(utils::response::success_response(response)),
-        Err(err) => Ok(utils::response::error_response(&err.to_string().as_str(), 400)),
+        Err(err) => {
+            // Log internal error to DB and file
+            // We don't want to block the response on DB logging; spawn a task
+            let db_clone = Arc::clone(&user_service.db);
+            let err_str = err.to_string();
+            tokio::spawn(async move {
+                let _ = utils::log_internal_error(db_clone, "ERROR", "register_user", "Internal error during register", Some(serde_json::json!({"error": err_str})), None, None).await;
+            });
+
+            // Return generic message to client
+            Ok(utils::response::error_response("An internal error occurred", 500))
+        }
     }
 }
 
@@ -55,8 +66,21 @@ pub async fn login_user(
     match user_service.login_user(r).await {
         Ok(response) => Ok(utils::response::success_response(response)),
         Err(err) => {
-            let status = if err.to_string().contains("password") || err.to_string().contains("Invalid email or password") { 401 } else { 400 };
-            Ok(utils::response::error_response(&err.to_string().as_str(), status))
+            // If it's a credentials issue, don't log as internal
+            let err_msg = err.to_string();
+            if err_msg.contains("Invalid email or password") || err_msg.contains("Account is deactivated") {
+                let status = if err_msg.contains("password") || err_msg.contains("Invalid email or password") { 401 } else { 400 };
+                return Ok(utils::response::error_response(&err_msg.as_str(), status));
+            }
+
+            // For other errors, log internals and return generic message
+            let db_clone = Arc::clone(&user_service.db);
+            let err_str = err.to_string();
+            tokio::spawn(async move {
+                let _ = utils::log_internal_error(db_clone, "ERROR", "login_user", "Internal error during login", Some(serde_json::json!({"error": err_str})), None, None).await;
+            });
+
+            Ok(utils::response::error_response("An internal error occurred", 500))
         }
     }
 }
