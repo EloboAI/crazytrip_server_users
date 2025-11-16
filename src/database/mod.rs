@@ -163,6 +163,29 @@ impl DatabaseService {
             )
             .await?;
 
+        // Create telemetry metrics aggregate table for storing periodic aggregates
+        client
+            .execute(
+                "\
+            CREATE TABLE IF NOT EXISTS telemetry_metrics_aggregate (\
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\
+                metric_name TEXT NOT NULL,\
+                labels JSONB,\
+                value DOUBLE PRECISION NOT NULL,\
+                ts TIMESTAMPTZ NOT NULL DEFAULT NOW()\
+            )\
+        ",
+                &[],
+            )
+            .await?;
+
+        client
+            .execute(
+                "CREATE INDEX IF NOT EXISTS idx_telemetry_metrics_aggregate_metric_time ON telemetry_metrics_aggregate(metric_name, ts)",
+                &[],
+            )
+            .await?;
+
         // Create revoked_tokens table for token revocation (prevent replay attacks)
         client
             .execute(
@@ -248,6 +271,29 @@ impl DatabaseService {
                     &request_id,
                     &user_id,
                 ],
+            )
+            .await?;
+
+        Ok(id)
+    }
+
+    /// Insert a metric aggregate record (for periodic aggregates stored in DB)
+    pub async fn insert_metric_aggregate(
+        &self,
+        metric_name: &str,
+        labels: Option<serde_json::Value>,
+        value: f64,
+    ) -> Result<Uuid, Box<dyn std::error::Error + Send + Sync>> {
+        let client = self.get_client().await?;
+
+        let id = Uuid::new_v4();
+        client
+            .execute(
+                "\
+            INSERT INTO telemetry_metrics_aggregate (id, metric_name, labels, value)\
+            VALUES ($1, $2, $3, $4)\
+        ",
+                &[&id, &metric_name, &labels, &value],
             )
             .await?;
 

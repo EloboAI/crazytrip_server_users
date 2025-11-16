@@ -66,6 +66,7 @@ where
             if path.starts_with("/health")
                 || path.starts_with("/api/v1/status")
                 || path.starts_with("/api/v1/auth")
+                || path.starts_with("/api/v1/metrics")
             {
                 return service.call(req).await;
             }

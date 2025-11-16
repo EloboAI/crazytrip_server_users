@@ -435,12 +435,12 @@ impl SessionService {
         Self { db }
     }
 
-    /// Clean up expired sessions
+    /// Clean up expired sessions and return number of removed sessions
     pub async fn cleanup_expired_sessions(
         &self,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.db.cleanup_expired_sessions().await?;
-        Ok(())
+    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+        let removed = self.db.cleanup_expired_sessions().await?;
+        Ok(removed)
     }
 
     /// Get active session count for user

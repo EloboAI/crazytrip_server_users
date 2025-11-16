@@ -55,5 +55,8 @@ getrandom = "0.2"
 
 # Keep dependencies up-to-date: bump small versions where safe
 
+# Observability
+prometheus = "0.14"
+
 [dev-dependencies]
 actix-web = { version = "4.4", features = ["macros"] }
