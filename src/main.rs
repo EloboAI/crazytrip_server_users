@@ -180,9 +180,12 @@ async fn main() -> std::io::Result<()> {
             // Actix built-in middleware (applied after custom middleware to avoid body type conflicts)
             .wrap(actix_middleware::Compress::default())
             // Public routes (no auth required)
-            .service(
+            .service({
+                // Build the scope with public routes
                 web::scope("/api/v1")
                     .route("/status", web::get().to(server_status))
+                    .route("/health", web::get().to(health_check))
+                    .route("/ready", web::get().to(readiness_check))
                     .route("/auth/register", web::post().to(register_user))
                     .route("/auth/login", web::post().to(login_user))
                     .route("/auth/refresh", web::post().to(refresh_token))
@@ -191,8 +194,8 @@ async fn main() -> std::io::Result<()> {
                         web::post().to(request_password_reset),
                     )
                     .route("/auth/reset-password", web::post().to(reset_password))
-                    .route("/auth/verify-email", web::post().to(verify_email)),
-            )
+                    .route("/auth/verify-email", web::post().to(verify_email))
+            })
             // Protected routes (auth required)
             .service(
                 web::scope("/api/v1")
@@ -224,8 +227,6 @@ async fn main() -> std::io::Result<()> {
                         web::post().to(admin_deactivate_user),
                     ),
             )
-            // Health check (no auth, no rate limiting)
-            .route("/health", web::get().to(health_check))
     })
     .bind((config.server.host.clone(), config.server.port))?
     .workers(config.server.workers)

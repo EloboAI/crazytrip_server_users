@@ -17,6 +17,40 @@ pub async fn health_check() -> Result<HttpResponse> {
     )))
 }
 
+/* readiness_check removed per user request */
+
+/// Readiness check endpoint - verifies DB connectivity
+pub async fn readiness_check(
+    db_service: web::Data<Arc<crate::database::DatabaseService>>,
+) -> Result<HttpResponse> {
+    // Try to acquire a client and run a simple query
+    match db_service.get_client().await {
+        Ok(client) => {
+            if let Err(e) = client.execute("SELECT 1", &[]).await {
+                log::error!("Readiness DB check failed: {}", e);
+                return Ok(utils::response::error_response(
+                    "Database unreachable",
+                    503,
+                ));
+            }
+
+            let status = serde_json::json!({
+                "status": "ready",
+                "database": "ok",
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            });
+
+            return Ok(utils::response::success_response(ApiResponse::success(
+                status,
+            )));
+        }
+        Err(e) => {
+            log::error!("Readiness DB client acquire failed: {}", e);
+            return Ok(utils::response::error_response("Database unreachable", 503));
+        }
+    }
+}
+
 /// Server status endpoint
 pub async fn server_status() -> Result<HttpResponse> {
     let status = serde_json::json!({
