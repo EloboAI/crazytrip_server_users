@@ -2,6 +2,8 @@
 
 A secure, production-ready backend server for user session management built with Rust and Actix Web.
 
+HOST=0.0.0.0 cargo run --bin crazytrip-user-service
+
 ## Features
 
 - 🔐 **JWT Authentication** with access and refresh tokens
