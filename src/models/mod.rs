@@ -27,6 +27,166 @@ pub enum UserRole {
     Moderator,
 }
 
+/// Business account verification status
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum BusinessVerificationStatus {
+    Pending,
+    UnderReview,
+    Approved,
+    Rejected,
+    Suspended,
+}
+
+/// Business member role with hierarchical permissions
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum BusinessRole {
+    Owner,  // Full control including ownership transfer
+    Admin,  // Management except ownership
+    Member, // Read-only access
+}
+
+impl BusinessRole {
+    pub fn can_manage_team(&self) -> bool {
+        matches!(self, BusinessRole::Owner | BusinessRole::Admin)
+    }
+
+    pub fn can_edit_business(&self) -> bool {
+        matches!(self, BusinessRole::Owner | BusinessRole::Admin)
+    }
+
+    pub fn can_transfer_ownership(&self) -> bool {
+        matches!(self, BusinessRole::Owner)
+    }
+}
+
+/// Business account model
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BusinessAccount {
+    pub id: Uuid,
+    pub name: String,
+    pub category: String,
+    pub address: String,
+    pub description: Option<String>,
+    pub phone: Option<String>,
+    pub website: Option<String>,
+    pub verification_status: BusinessVerificationStatus,
+    pub tax_id: Option<String>,
+    pub document_urls: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub verified_at: Option<DateTime<Utc>>,
+    pub rejection_reason: Option<String>,
+}
+
+/// Business member model
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BusinessMember {
+    pub id: Uuid,
+    pub business_id: Uuid,
+    pub user_id: Uuid,
+    pub email: String,
+    pub username: String,
+    pub role: BusinessRole,
+    pub invited_at: DateTime<Utc>,
+    pub joined_at: Option<DateTime<Utc>>,
+    pub is_active: bool,
+    pub invited_by: Option<Uuid>,
+}
+
+/// Business registration request
+#[derive(Debug, Deserialize, Validate)]
+pub struct BusinessRegistrationRequest {
+    #[validate(length(min = 3, max = 200, message = "Business name must be 3-200 characters"))]
+    pub name: String,
+    
+    #[validate(length(min = 2, max = 100, message = "Category must be 2-100 characters"))]
+    pub category: String,
+    
+    #[validate(length(min = 5, max = 500, message = "Address must be 5-500 characters"))]
+    pub address: String,
+    
+    pub description: Option<String>,
+    pub phone: Option<String>,
+    pub website: Option<String>,
+    pub tax_id: Option<String>,
+    pub document_urls: Vec<String>,
+    pub is_multi_user_team: bool,
+}
+
+/// Business invitation request
+#[derive(Debug, Deserialize, Validate)]
+pub struct BusinessInvitationRequest {
+    #[validate(email(message = "Invalid email format"))]
+    pub email: String,
+    
+    pub role: BusinessRole,
+    pub message: Option<String>,
+}
+
+/// Audit log action types
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditActionType {
+    BusinessCreated,
+    BusinessUpdated,
+    BusinessVerified,
+    BusinessRejected,
+    MemberInvited,
+    MemberJoined,
+    MemberRemoved,
+    RoleChanged,
+    OwnershipTransferred,
+    PromotionCreated,
+    PromotionUpdated,
+    PromotionDeleted,
+}
+
+/// Audit log entry model for compliance
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogEntry {
+    pub id: Uuid,
+    pub business_id: Uuid,
+    pub user_id: Uuid,
+    pub username: String,
+    pub action: AuditActionType,
+    pub metadata: Option<serde_json::Value>,
+    pub target_user_id: Option<Uuid>,
+    pub target_username: Option<String>,
+    pub timestamp: DateTime<Utc>,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+}
+
+/// Business response (without sensitive info)
+#[derive(Debug, Serialize)]
+pub struct BusinessResponse {
+    pub id: Uuid,
+    pub name: String,
+    pub category: String,
+    pub address: String,
+    pub description: Option<String>,
+    pub phone: Option<String>,
+    pub website: Option<String>,
+    pub verification_status: BusinessVerificationStatus,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Business member response
+#[derive(Debug, Serialize)]
+pub struct BusinessMemberResponse {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub email: String,
+    pub username: String,
+    pub role: BusinessRole,
+    pub invited_at: DateTime<Utc>,
+    pub joined_at: Option<DateTime<Utc>>,
+    pub is_active: bool,
+}
+
 /// Session model for JWT tokens
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
