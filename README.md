@@ -300,6 +300,23 @@ docker run --name ct-dev-postgres -e POSTGRES_PASSWORD=moti -e POSTGRES_USER=pos
 cargo run --bin create_db
 ```
 
+### Applying Migrations (Flyway-style)
+
+This repo includes Flyway-style SQL migrations under `migrations/` and a small migration runner.
+
+Usage:
+
+```bash
+# Ensure DATABASE_URL is set in your environment (e.g. in .env)
+cargo run --bin migrate
+```
+
+Notes:
+
+- Migration files live in `migrations/` and must be named like `V0001__description.sql` so they are applied in order.
+- The runner creates a `schema_migrations` table to track applied versions and will skip already-applied files.
+- For production consider using a proven migration tool (`sqlx migrate`, Flyway, Liquibase) and run migrations as part of CI/CD.
+
 - Helper binary: inspect `sessions` table and test DELETE in a transaction (safe check):
 
 ```bash
