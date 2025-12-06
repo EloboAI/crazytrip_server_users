@@ -8,33 +8,30 @@ use uuid::Uuid;
 use crate::config::AuthConfig;
 use crate::models::{AuthResponse, Session, User, UserResponse};
 
-/// JWT claims structure
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
-    pub sub: String, // User ID
+    pub sub: String,
     pub email: String,
     pub username: String,
     pub role: String,
-    pub exp: i64,    // Expiration time
-    pub iat: i64,    // Issued at
-    pub iss: String, // Issuer
-    pub jti: String, // JWT ID
-}
-
-/// Refresh token claims
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RefreshClaims {
-    pub sub: String,      // User ID
-    pub token_id: String, // Unique token identifier
     pub exp: i64,
     pub iat: i64,
     pub iss: String,
     pub jti: String,
 }
 
-/// Authentication service
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RefreshClaims {
+    pub sub: String,
+    pub token_id: String,
+    pub exp: i64,
+    pub iat: i64,
+    pub iss: String,
+    pub jti: String,
+}
+
 pub struct AuthService {
-    config: AuthConfig,
+    pub config: AuthConfig,
     encoding_key: EncodingKey,
     decoding_key: DecodingKey,
 }
@@ -51,16 +48,6 @@ impl AuthService {
         }
     }
 
-    /// Hash a password using bcrypt
-    pub fn hash_password(&self, password: &str) -> Result<String, bcrypt::BcryptError> {
-        bcrypt::hash(password, self.config.bcrypt_cost)
-    }
-
-    /// Verify a password against its hash
-    pub fn verify_password(&self, password: &str, hash: &str) -> Result<bool, bcrypt::BcryptError> {
-        bcrypt::verify(password, hash)
-    }
-
     /// Generate access and refresh tokens for a user and return AuthResponse
     pub fn generate_tokens(
         &self,
@@ -69,12 +56,11 @@ impl AuthService {
         let now = Utc::now();
         let token_id = Uuid::new_v4().to_string();
 
-        // Access token claims
         let access_claims = Claims {
             sub: user.id.to_string(),
             email: user.email.clone(),
             username: user.username.clone(),
-            role: format!("{:?}", user.role),
+            role: user.role.to_string(),
             exp: (now + Duration::hours(self.config.jwt_expiration_hours)).timestamp(),
             iat: now.timestamp(),
             iss: "crazytrip-users".to_string(),
@@ -157,6 +143,23 @@ impl AuthService {
         Ok(claims.role == "Admin")
     }
 
+    /// Hash a password using bcrypt
+    pub fn hash_password(
+        &self,
+        password: &str,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(bcrypt::hash(password, self.config.bcrypt_cost)?)
+    }
+
+    /// Verify a password against a hash
+    pub fn verify_password(
+        &self,
+        password: &str,
+        hash: &str,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(bcrypt::verify(password, hash)?)
+    }
+
     /// Hash a token for storage (using SHA-256)
     pub fn hash_token(
         &self,
@@ -182,7 +185,7 @@ impl AuthService {
         Session {
             id: session_id,
             user_id: user.id,
-            token_hash: "".to_string(), // Will be set when tokens are generated
+            token_hash: String::new(),
             refresh_token_hash: None,
             ip_address: ip_address.to_string(),
             user_agent: user_agent.map(|s| s.to_string()),
@@ -205,11 +208,7 @@ pub struct AuthResult {
 
 /// Extract bearer token from Authorization header
 pub fn extract_bearer_token(auth_header: &str) -> Option<&str> {
-    if auth_header.starts_with("Bearer ") {
-        Some(&auth_header[7..])
-    } else {
-        None
-    }
+    auth_header.strip_prefix("Bearer ")
 }
 
 /// Extract token from request headers
@@ -239,18 +238,26 @@ pub fn extract_token_from_request(req: &impl HttpMessage) -> Option<String> {
             }
 
             // Double-submit CSRF protection: require a csrf token header that matches the csrf cookie
-            // Only accept access_token from cookies when the client also sends a matching `x-csrf-token` header.
+            // Only accept access_token from cookies when el header x-csrf-token coincide con csrf_token
             if let Some(access_token) = cookies.get("access_token") {
                 if let Some(csrf_cookie) = cookies.get("csrf_token") {
                     if let Some(csrf_header_val) = req.headers().get("x-csrf-token") {
                         if let Ok(csrf_header_str) = csrf_header_val.to_str() {
                             if csrf_header_str == csrf_cookie.as_str() {
                                 return Some(access_token.to_string());
+                            } else {
+                                log::warn!("CSRF token mismatch: header != cookie");
                             }
+                        } else {
+                            log::warn!("CSRF header value parse error");
                         }
+                    } else {
+                        log::warn!("Missing x-csrf-token header for cookie auth");
                     }
+                } else {
+                    log::warn!("Missing csrf_token cookie for cookie auth");
                 }
-                // If CSRF validation fails, do not accept cookie token
+                // Si la validación CSRF falla, nunca aceptar el token por cookie
             }
         }
     }
@@ -271,46 +278,51 @@ impl RateLimitStore {
             cleanup_counter: 0,
         }
     }
+}
 
-    /// Check if a request is allowed. This method also performs a periodic cleanup
-    /// of stale keys to avoid unbounded memory growth. The TTL used for keys is
-    /// `window_seconds * 4` (configurable here) and the global cleanup runs once
-    /// every 100 calls to `is_allowed`.
+impl Default for RateLimitStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RateLimitStore {
+    /// Check if a request is allowed. Esta versión fuerza limpieza agresiva y TTL explícito para evitar DoS por claves únicas.
     pub fn is_allowed(&mut self, key: &str, max_requests: u32, window_seconds: u64) -> bool {
         let now = Utc::now().timestamp();
         let window_start = now - window_seconds as i64;
+        // TTL para remover claves inactivas (máximo 10 minutos)
+        let ttl = std::cmp::max(window_seconds as i64 * 4, 600);
 
-        // TTL for removing entire keys if they remain inactive for long time
-        let ttl = (window_seconds as i64) * 4;
-
-        let user_requests = self
-            .requests
-            .entry(key.to_string())
-            .or_insert_with(Vec::new);
+        let user_requests = self.requests.entry(key.to_string()).or_default();
 
         // Remove old requests outside the sliding window
         user_requests.retain(|&timestamp| timestamp > window_start);
 
+        // Si la clave está inactiva por más de TTL, eliminarla
+        if let Some(&last) = user_requests.last() {
+            if now - last > ttl {
+                self.requests.remove(key);
+                return true;
+            }
+        }
+
         // Check if under limit
         if user_requests.len() >= max_requests as usize {
-            // Periodic cleanup to evict stale keys
             self.maybe_run_global_cleanup(ttl);
             return false;
         }
 
         // Add current request
         user_requests.push(now);
-
-        // Periodic cleanup to evict stale keys
         self.maybe_run_global_cleanup(ttl);
-
         true
     }
 
     fn maybe_run_global_cleanup(&mut self, ttl_seconds: i64) {
         // Increment counter and run full cleanup occasionally
         self.cleanup_counter = self.cleanup_counter.wrapping_add(1);
-        if self.cleanup_counter % 100 != 0 {
+        if !self.cleanup_counter.is_multiple_of(100) {
             return;
         }
 

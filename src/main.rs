@@ -7,12 +7,12 @@ mod models;
 mod services;
 mod utils;
 
-use actix_web::{middleware as actix_middleware, web, App, HttpServer, HttpResponse};
+use actix_web::{middleware as actix_middleware, web, App, HttpResponse, HttpServer};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
 
-use prometheus::{Registry, TextEncoder, Encoder, IntCounter, Opts};
+use prometheus::{Encoder, IntCounter, Opts, Registry, TextEncoder};
 use std::sync::Arc as StdArc;
 
 use auth::{AuthService, RateLimitStore};
@@ -128,13 +128,23 @@ async fn main() -> std::io::Result<()> {
     let registry = Registry::new();
 
     // Create and register basic metrics so /metrics is not empty
-    let cleanup_runs_opts = Opts::new("session_cleanup_runs_total", "Number of session cleanup runs");
+    let cleanup_runs_opts = Opts::new(
+        "session_cleanup_runs_total",
+        "Number of session cleanup runs",
+    );
     let session_cleanup_runs = IntCounter::with_opts(cleanup_runs_opts).unwrap();
-    registry.register(Box::new(session_cleanup_runs.clone())).ok();
+    registry
+        .register(Box::new(session_cleanup_runs.clone()))
+        .ok();
 
-    let cleanup_removed_opts = Opts::new("session_cleanup_removed_total", "Number of sessions removed by cleanup");
+    let cleanup_removed_opts = Opts::new(
+        "session_cleanup_removed_total",
+        "Number of sessions removed by cleanup",
+    );
     let session_cleanup_removed = IntCounter::with_opts(cleanup_removed_opts).unwrap();
-    registry.register(Box::new(session_cleanup_removed.clone())).ok();
+    registry
+        .register(Box::new(session_cleanup_removed.clone()))
+        .ok();
 
     // Wrap metrics in an Arc so background tasks and handlers can share them
     let metrics = StdArc::new(Metrics {
@@ -155,20 +165,23 @@ async fn main() -> std::io::Result<()> {
                 Ok(removed) => {
                     // increment prometheus counters
                     metrics_bg.session_cleanup_runs.inc();
-                    metrics_bg.session_cleanup_removed.inc_by(removed as u64);
+                    metrics_bg.session_cleanup_removed.inc_by(removed);
 
-                    if let Err(e) = db_for_bg.insert_metric_aggregate(
-                        "session_cleanup_removed",
-                        Some(serde_json::json!({ "job": "session_cleanup" })),
-                        removed as f64,
-                    ).await {
+                    if let Err(e) = db_for_bg
+                        .insert_metric_aggregate(
+                            "session_cleanup_removed",
+                            Some(serde_json::json!({ "job": "session_cleanup" })),
+                            removed as f64,
+                        )
+                        .await
+                    {
                         log::error!("Failed to persist session cleanup metric: {}", e);
                     }
                     log::info!("Cleaned up expired sessions: {}", removed);
                 }
                 Err(e) => {
                     log::error!("Failed to cleanup expired sessions: {}", e);
-                // Persist error to DB for auditing
+                    // Persist error to DB for auditing
                     let db_clone = Arc::clone(&db_for_bg);
                     let err_str = e.to_string();
                     tokio::spawn(async move {
@@ -234,27 +247,33 @@ async fn main() -> std::io::Result<()> {
                     .route("/health", web::get().to(health_check))
                     .route("/ready", web::get().to(readiness_check))
                     // Prometheus metrics endpoint (scraped externally)
-                    .route("/metrics", web::get().to(|registry: web::Data<Registry>| async move {
-                        let encoder = TextEncoder::new();
-                        let metric_families = registry.gather();
-                        let mut buffer = Vec::new();
-                        encoder.encode(&metric_families, &mut buffer).unwrap();
-                        let text = String::from_utf8(buffer).unwrap_or_default();
-                        HttpResponse::Ok()
-                            .content_type("text/plain; version=0.0.4; charset=utf-8")
-                            .body(text)
-                    }))
+                    .route(
+                        "/metrics",
+                        web::get().to(|registry: web::Data<Registry>| async move {
+                            let encoder = TextEncoder::new();
+                            let metric_families = registry.gather();
+                            let mut buffer = Vec::new();
+                            encoder.encode(&metric_families, &mut buffer).unwrap();
+                            let text = String::from_utf8(buffer).unwrap_or_default();
+                            HttpResponse::Ok()
+                                .content_type("text/plain; version=0.0.4; charset=utf-8")
+                                .body(text)
+                        }),
+                    )
                     // JSON representation of metrics (simple wrapper with text metrics)
-                    .route("/metrics/json", web::get().to(|registry: web::Data<Registry>| async move {
-                        let encoder = TextEncoder::new();
-                        let metric_families = registry.gather();
-                        let mut buffer = Vec::new();
-                        encoder.encode(&metric_families, &mut buffer).unwrap();
-                        let text = String::from_utf8(buffer).unwrap_or_default();
-                        HttpResponse::Ok()
-                            .content_type("application/json")
-                            .json(serde_json::json!({ "metrics": text }))
-                    }))
+                    .route(
+                        "/metrics/json",
+                        web::get().to(|registry: web::Data<Registry>| async move {
+                            let encoder = TextEncoder::new();
+                            let metric_families = registry.gather();
+                            let mut buffer = Vec::new();
+                            encoder.encode(&metric_families, &mut buffer).unwrap();
+                            let text = String::from_utf8(buffer).unwrap_or_default();
+                            HttpResponse::Ok()
+                                .content_type("application/json")
+                                .json(serde_json::json!({ "metrics": text }))
+                        }),
+                    )
                     .route("/auth/register", web::post().to(register_user))
                     .route("/auth/login", web::post().to(login_user))
                     .route("/auth/refresh", web::post().to(refresh_token))

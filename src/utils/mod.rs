@@ -64,18 +64,13 @@ pub struct QueryParams {
 
 /// Sorting direction
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub enum SortOrder {
     #[serde(rename = "asc")]
     Asc,
     #[serde(rename = "desc")]
+    #[default]
     Desc,
-}
-
-impl Default for SortOrder {
-    fn default() -> Self {
-        SortOrder::Desc
-    }
 }
 
 /// Date range filter
@@ -409,7 +404,7 @@ pub async fn log_internal_error(
     user_id: Option<uuid::Uuid>,
 ) -> Result<uuid::Uuid, Box<dyn std::error::Error + Send + Sync>> {
     // Sanitize details before logging to avoid leaking sensitive info
-    let sanitized_details = details.and_then(|d| {
+    let sanitized_details = details.map(|d| {
         match d {
             serde_json::Value::Object(mut map) => {
                 // iterate keys and mask commonly sensitive fields
@@ -460,7 +455,7 @@ pub async fn log_internal_error(
             severity,
             category,
             message,
-            sanitized_details,
+            sanitized_details.flatten(),
             request_id,
             user_id,
         )

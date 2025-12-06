@@ -1,3 +1,4 @@
+use crate::models::User;
 use chrono::{TimeZone, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -5,7 +6,7 @@ use validator::Validate;
 
 use crate::auth::AuthService;
 use crate::database::DatabaseService;
-use crate::models::{ApiResponse, AuthResponse, LoginRequest, RegisterRequest, Session, User};
+use crate::models::{ApiResponse, AuthResponse, LoginRequest, RegisterRequest, Session};
 
 /// User service for business logic
 pub struct UserService {
@@ -29,10 +30,10 @@ impl UserService {
         self.validate_registration_request(&req)?;
 
         // Check if user already exists
-        if let Some(_) = self.db.get_user_by_email(&req.email).await? {
+        if (self.db.get_user_by_email(&req.email).await?).is_some() {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "User with this email already exists".to_string(),
+                "User with this email already exists",
             )));
         }
 
@@ -48,13 +49,23 @@ impl UserService {
         // Generate tokens
         let tokens = self.auth.generate_tokens(&user)?;
 
-        // Build session using AuthService helper and populate token hashes
+        // Build session using AuthService helper y asegurar hashes correctos
         let mut session = self.auth.create_session(&user, ip_address, user_agent);
         session.token_hash = self.auth.hash_token(&tokens.access_token)?;
         session.refresh_token_hash = Some(self.auth.hash_token(&tokens.refresh_token)?);
-
+        // Validar que los hashes no estén vacíos
+        if session.token_hash.is_empty()
+            || session
+                .refresh_token_hash
+                .as_deref()
+                .unwrap_or("")
+                .is_empty()
+        {
+            return Err(Box::new(std::io::Error::other(
+                "Token hash or refresh token hash is empty; session not created",
+            )));
+        }
         self.db.create_session(&session).await?;
-
         Ok(ApiResponse::success(tokens))
     }
 
@@ -77,8 +88,8 @@ impl UserService {
             None => {
                 return Err(Box::new(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    format!("Invalid email or password"),
-                )))
+                    "Invalid email or password",
+                )));
             }
         };
 
@@ -89,7 +100,7 @@ impl UserService {
         {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid email or password"),
+                "Invalid email or password",
             )));
         }
 
@@ -97,20 +108,29 @@ impl UserService {
         if !user.is_active {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Account is deactivated"),
+                "Account is deactivated",
             )));
         }
 
         // Generate tokens
         let tokens = self.auth.generate_tokens(&user)?;
 
-        // Build session using AuthService helper and populate token hashes
+        // Build session using AuthService helper y asegurar hashes correctos
         let mut session = self.auth.create_session(&user, ip_address, user_agent);
         session.token_hash = self.auth.hash_token(&tokens.access_token)?;
         session.refresh_token_hash = Some(self.auth.hash_token(&tokens.refresh_token)?);
-
+        if session.token_hash.is_empty()
+            || session
+                .refresh_token_hash
+                .as_deref()
+                .unwrap_or("")
+                .is_empty()
+        {
+            return Err(Box::new(std::io::Error::other(
+                "Token hash or refresh token hash is empty; session not created",
+            )));
+        }
         self.db.create_session(&session).await?;
-
         Ok(ApiResponse::success(tokens))
     }
 
@@ -124,67 +144,72 @@ impl UserService {
         // Validate refresh token
         let claims = self.auth.validate_refresh_token(refresh_token)?;
 
-        // Reject immediately if this token's JTI has already been revoked (replay protection)
+        // Replay protection: rechazar si el JTI ya está revocado
         if self.db.is_token_revoked(&claims.jti).await? {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
-                format!("Refresh token already used or invalid"),
+                "Refresh token already used or invalid",
             )));
         }
-
-        // Get user
-        let user_id = Uuid::parse_str(&claims.sub)?;
+        // Parse seguro de UUID
+        let user_id = match Uuid::parse_str(&claims.sub) {
+            Ok(id) => id,
+            Err(_) => {
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Invalid user id in refresh token claims",
+                )));
+            }
+        };
         let user = self.db.get_user_by_id(&user_id).await?;
-
-        // Check if user exists
         let user = match user {
             Some(u) => u,
             None => {
                 return Err(Box::new(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
-                    format!("User not found"),
-                )))
+                    "User not found",
+                )));
             }
         };
-
-        // Check if user is active
         if !user.is_active {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Account is deactivated"),
+                "Account is deactivated",
             )));
         }
-
         // Invalidate old session (by refresh token hash)
         let old_refresh_hash = self.auth.hash_token(refresh_token)?;
         let affected = self
             .db
             .invalidate_session_by_refresh_token_hash(&old_refresh_hash)
             .await?;
-
-        // If no rows were affected, the refresh token was already used or does not exist
         if affected == 0 {
+            // No sesión afectada: revocar JTI solo si la sesión fue invalidada
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
-                format!("Refresh token already used or invalid"),
+                "Refresh token already used or invalid",
             )));
         }
-
-        // Generate new tokens
-        let tokens = self.auth.generate_tokens(&user)?;
-
-        // After invalidating the previous session, revoke the refresh token JTI to prevent reuse
-        // Map claims.jti to revoked_tokens with the refresh expiry
+        // Revocar JTI tras invalidar la sesión
         let refresh_expires = chrono::Utc.timestamp_opt(claims.exp, 0).single();
         let _ = self.db.revoke_token(&claims.jti, refresh_expires).await;
-
-        // Build session using AuthService helper and populate token hashes and metadata
+        // Generar nuevos tokens
+        let tokens = self.auth.generate_tokens(&user)?;
         let mut session = self.auth.create_session(&user, ip_address, user_agent);
         session.token_hash = self.auth.hash_token(&tokens.access_token)?;
         session.refresh_token_hash = Some(self.auth.hash_token(&tokens.refresh_token)?);
-
+        if session.token_hash.is_empty()
+            || session
+                .refresh_token_hash
+                .as_deref()
+                .unwrap_or("")
+                .is_empty()
+        {
+            return Err(Box::new(std::io::Error::other(
+                "Token hash or refresh token hash is empty; session not created",
+            )));
+        }
         self.db.create_session(&session).await?;
-
         Ok(ApiResponse::success(tokens))
     }
 
@@ -214,7 +239,7 @@ impl UserService {
             Some(u) => Ok(ApiResponse::success(u)),
             None => Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("User not found"),
+                "User not found",
             ))),
         }
     }
@@ -240,8 +265,8 @@ impl UserService {
             None => {
                 return Err(Box::new(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
-                    format!("User not found"),
-                )))
+                    "User not found",
+                )));
             }
         };
 
@@ -326,13 +351,13 @@ impl UserService {
         {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid email format"),
+                "Invalid email format",
             )));
         }
         if req.password.is_empty() {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Password is required"),
+                "Password is required",
             )));
         }
         Ok(())
@@ -343,19 +368,19 @@ impl UserService {
         if email.is_empty() {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Email is required"),
+                "Email is required",
             )));
         }
         if email.len() > 254 {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Email too long"),
+                "Email too long",
             )));
         }
         if !email.contains('@') || !email.split('@').nth(1).unwrap_or("").contains('.') {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid email format"),
+                "Invalid email format",
             )));
         }
         Ok(())
@@ -369,19 +394,19 @@ impl UserService {
         if username.is_empty() {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Username is required"),
+                "Username is required",
             )));
         }
         if username.len() < 3 {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Username must be at least 3 characters"),
+                "Username must be at least 3 characters",
             )));
         }
         if username.len() > 50 {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Username too long"),
+                "Username too long",
             )));
         }
         if !username
@@ -390,7 +415,7 @@ impl UserService {
         {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Username contains invalid characters"),
+                "Username contains invalid characters",
             )));
         }
         Ok(())
@@ -404,13 +429,13 @@ impl UserService {
         if password.len() < 8 {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Password must be at least 8 characters"),
+                "Password must be at least 8 characters",
             )));
         }
         if password.len() > 128 {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Password too long"),
+                "Password too long",
             )));
         }
         // Check for at least one uppercase, one lowercase, one digit
@@ -419,7 +444,10 @@ impl UserService {
         let has_digit = password.chars().any(|c| c.is_numeric());
 
         if !has_upper || !has_lower || !has_digit {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Password must contain at least one uppercase letter, one lowercase letter, and one digit"))));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Password must contain at least one uppercase letter, one lowercase letter, and one digit",
+            )));
         }
         Ok(())
     }

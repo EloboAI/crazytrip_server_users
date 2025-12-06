@@ -28,10 +28,7 @@ pub async fn readiness_check(
         Ok(client) => {
             if let Err(e) = client.execute("SELECT 1", &[]).await {
                 log::error!("Readiness DB check failed: {}", e);
-                return Ok(utils::response::error_response(
-                    "Database unreachable",
-                    503,
-                ));
+                return Ok(utils::response::error_response("Database unreachable", 503));
             }
 
             let status = serde_json::json!({
@@ -40,13 +37,13 @@ pub async fn readiness_check(
                 "timestamp": chrono::Utc::now().to_rfc3339()
             });
 
-            return Ok(utils::response::success_response(ApiResponse::success(
+            Ok(utils::response::success_response(ApiResponse::success(
                 status,
-            )));
+            )))
         }
         Err(e) => {
             log::error!("Readiness DB client acquire failed: {}", e);
-            return Ok(utils::response::error_response("Database unreachable", 503));
+            Ok(utils::response::error_response("Database unreachable", 503))
         }
     }
 }
@@ -88,11 +85,10 @@ pub async fn register_user(
 
     match user_service.register_user(r, &ip, ua.as_deref()).await {
         Ok(response) => Ok(utils::response::success_response(response)),
-        Err(err) => {
-            // Log internal error to DB and file
-            // We don't want to block the response on DB logging; spawn a task
+        Err(_err) => {
+            // Log interno, pero nunca mostrar detalles al cliente
             let db_clone = Arc::clone(&user_service.db);
-            let err_str = format!("{:?}", err);
+            let err_str = "Internal error".to_string();
             tokio::spawn(async move {
                 let _ = utils::log_internal_error(
                     db_clone,
@@ -105,8 +101,6 @@ pub async fn register_user(
                 )
                 .await;
             });
-
-            // Return generic message to client
             Ok(utils::response::error_response(
                 "An internal error occurred",
                 500,
@@ -141,7 +135,7 @@ pub async fn login_user(
     match user_service.login_user(r, &ip, ua.as_deref()).await {
         Ok(response) => Ok(utils::response::success_response(response)),
         Err(err) => {
-            // If it's a credentials issue, don't log as internal
+            // Si es error de credenciales, mensaje específico
             let err_msg = err.to_string();
             if err_msg.contains("Invalid email or password")
                 || err_msg.contains("Account is deactivated")
@@ -153,25 +147,25 @@ pub async fn login_user(
                 } else {
                     400
                 };
-                return Ok(utils::response::error_response(&err_msg.as_str(), status));
+                return Ok(utils::response::error_response(
+                    "Invalid credentials",
+                    status,
+                ));
             }
-
-            // For other errors, log internals and return generic message
+            // Para otros errores, log interno y mensaje genérico
             let db_clone = Arc::clone(&user_service.db);
-            let err_str = err.to_string();
             tokio::spawn(async move {
                 let _ = utils::log_internal_error(
                     db_clone,
                     "ERROR",
                     "login_user",
                     "Internal error during login",
-                    Some(serde_json::json!({"error": err_str})),
+                    Some(serde_json::json!({"error": "Internal error"})),
                     None,
                     None,
                 )
                 .await;
             });
-
             Ok(utils::response::error_response(
                 "An internal error occurred",
                 500,
@@ -238,24 +232,20 @@ pub async fn refresh_token(
         .await
     {
         Ok(response) => Ok(utils::response::success_response(response)),
-        Err(err) => {
-            // Log internal error details asynchronously
+        Err(_err) => {
             let db_clone = Arc::clone(&user_service.db);
-            let err_str = err.to_string();
             tokio::spawn(async move {
                 let _ = utils::log_internal_error(
                     db_clone,
                     "WARN",
                     "refresh_token",
                     "Refresh token exchange failed",
-                    Some(serde_json::json!({"error": err_str})),
+                    Some(serde_json::json!({"error": "Internal error"})),
                     None,
                     None,
                 )
                 .await;
             });
-
-            // Return a generic unauthorized message
             Ok(utils::response::error_response(
                 "Invalid or expired refresh token",
                 401,

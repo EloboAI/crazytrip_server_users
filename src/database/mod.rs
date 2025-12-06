@@ -1,3 +1,4 @@
+use crate::models::User;
 use std::net::{IpAddr, Ipv4Addr};
 
 use chrono::{DateTime, Utc};
@@ -7,7 +8,7 @@ use tokio_postgres::NoTls;
 use uuid::Uuid;
 
 use crate::config::DatabaseConfig;
-use crate::models::{Session, User, UserRole};
+use crate::models::{Session, UserRole};
 
 /// Database connection pool
 pub type DbPool = Pool;
@@ -51,7 +52,9 @@ impl DatabaseService {
     pub async fn init_schema(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Schema creation is intentionally omitted here.
         // Use the SQL migration files under `migrations/` and the `bin/` helpers to create or migrate the database.
-        log::info!("Skipping inline DDL in init_schema; use migrations/ and bin/ scripts to manage schema");
+        log::info!(
+            "Skipping inline DDL in init_schema; use migrations/ and bin/ scripts to manage schema"
+        );
         Ok(())
     }
 
@@ -297,7 +300,7 @@ impl DatabaseService {
         let ip_address: IpAddr = session
             .ip_address
             .parse()
-            .unwrap_or_else(|_| IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+            .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
 
         client
             .execute(
