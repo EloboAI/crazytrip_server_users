@@ -20,10 +20,11 @@ pub struct User {
     pub locked_until: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum UserRole {
-    User,
     Admin,
+    User,
     Moderator,
 }
 

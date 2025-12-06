@@ -157,7 +157,7 @@ impl DatabaseService {
                 "
             INSERT INTO users (email, username, password_hash)
             VALUES ($1, $2, $3)
-            RETURNING id, email, username, password_hash, role, is_active, is_email_verified,
+            RETURNING id, email, username, password_hash, role::TEXT AS role, is_active, is_email_verified,
                       created_at, updated_at, last_login_at, login_attempts, locked_until
         ",
                 &[&email, &username, &password_hash],
@@ -177,8 +177,8 @@ impl DatabaseService {
         let rows = client
             .query(
                 "
-            SELECT id, email, username, password_hash, role, is_active, is_email_verified,
-                   created_at, updated_at, last_login_at, login_attempts, locked_until
+                 SELECT id, email, username, password_hash, role::TEXT AS role, is_active, is_email_verified,
+                     created_at, updated_at, last_login_at, login_attempts, locked_until
             FROM users WHERE id = $1
         ",
                 &[id],
@@ -202,8 +202,8 @@ impl DatabaseService {
         let rows = client
             .query(
                 "
-            SELECT id, email, username, password_hash, role, is_active, is_email_verified,
-                   created_at, updated_at, last_login_at, login_attempts, locked_until
+                 SELECT id, email, username, password_hash, role::TEXT AS role, is_active, is_email_verified,
+                     created_at, updated_at, last_login_at, login_attempts, locked_until
             FROM users WHERE email = $1
         ",
                 &[&email],
@@ -334,8 +334,8 @@ impl DatabaseService {
         let rows = client
             .query(
                 "
-            SELECT id, user_id, token_hash, refresh_token_hash, ip_address, user_agent,
-                   expires_at, refresh_expires_at, is_active, created_at
+                 SELECT id, user_id, token_hash, refresh_token_hash, ip_address::text AS ip_address, user_agent,
+                     expires_at, refresh_expires_at, is_active, created_at
             FROM sessions
             WHERE token_hash = $1 AND is_active = true AND expires_at > NOW()
         ",
@@ -550,7 +550,7 @@ impl DatabaseService {
         let client = self.get_client().await?;
 
         let rows = client.query("
-            SELECT id, user_id, token_hash, refresh_token_hash, ip_address, user_agent, expires_at, refresh_expires_at, is_active, created_at
+            SELECT id, user_id, token_hash, refresh_token_hash, ip_address::text AS ip_address, user_agent, expires_at, refresh_expires_at, is_active, created_at
             FROM sessions WHERE user_id = $1 ORDER BY created_at DESC
         ", &[user_id]).await?;
 
@@ -569,7 +569,7 @@ impl DatabaseService {
             email: row.get(1),
             username: row.get(2),
             password_hash: row.get(3),
-            role: match row.get::<_, &str>(4) {
+            role: match row.get::<_, String>(4).as_str() {
                 "Admin" => UserRole::Admin,
                 "Moderator" => UserRole::Moderator,
                 _ => UserRole::User,
@@ -586,12 +586,13 @@ impl DatabaseService {
 
     /// Helper to convert database row to Session
     fn row_to_session(row: &tokio_postgres::Row) -> Session {
+        let ip_str: String = row.get(4);
         Session {
             id: row.get(0),
             user_id: row.get(1),
             token_hash: row.get(2),
             refresh_token_hash: row.get(3),
-            ip_address: row.get(4),
+            ip_address: ip_str,
             user_agent: row.get(5),
             expires_at: row.get(6),
             refresh_expires_at: row.get(7),

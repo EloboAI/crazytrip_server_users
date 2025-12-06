@@ -92,7 +92,7 @@ pub async fn register_user(
             // Log internal error to DB and file
             // We don't want to block the response on DB logging; spawn a task
             let db_clone = Arc::clone(&user_service.db);
-            let err_str = err.to_string();
+            let err_str = format!("{:?}", err);
             tokio::spawn(async move {
                 let _ = utils::log_internal_error(
                     db_clone,
