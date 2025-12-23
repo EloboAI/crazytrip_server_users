@@ -185,7 +185,7 @@ pub struct Session {
 }
 
 /// Login request payload
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, Clone)]
 pub struct LoginRequest {
     #[validate(email(message = "Invalid email format"))]
     pub email: String,
@@ -195,7 +195,7 @@ pub struct LoginRequest {
 }
 
 /// Register request payload
-#[derive(Debug, Deserialize, Validate, Serialize)]
+#[derive(Debug, Deserialize, Validate, Serialize, Clone)]
 pub struct RegisterRequest {
     #[validate(email(message = "Invalid email format"))]
     pub email: String,
