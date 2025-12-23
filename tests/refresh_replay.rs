@@ -1,5 +1,5 @@
 use std::sync::Arc;
-
+// Eliminado: test de ejemplo
 use crazytrip_user_service::auth::AuthService;
 use crazytrip_user_service::config::AuthConfig;
 use crazytrip_user_service::database::DatabaseService;

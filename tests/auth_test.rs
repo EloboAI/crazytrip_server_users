@@ -2,7 +2,7 @@
 mod tests {
     use actix_web::{test, web, App, HttpResponse, Result as ActixResult};
     use serde::{Deserialize, Serialize};
-
+// Eliminado: test de ejemplo
     #[derive(Serialize, Deserialize)]
     struct RegisterRequest {
         email: String,
