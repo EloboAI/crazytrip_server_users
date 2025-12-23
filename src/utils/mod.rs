@@ -373,9 +373,14 @@ pub mod response {
     use serde::Serialize;
 
     pub fn json_response<T: Serialize>(data: T, status: u16) -> HttpResponse {
-        HttpResponse::build(actix_web::http::StatusCode::from_u16(status).unwrap())
-            .content_type("application/json")
-            .json(data)
+        match actix_web::http::StatusCode::from_u16(status) {
+            Ok(code) => HttpResponse::build(code)
+                .content_type("application/json")
+                .json(data),
+            Err(_) => HttpResponse::build(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR)
+                .content_type("application/json")
+                .json(serde_json::json!({"error": "Invalid status code"})),
+        }
     }
 
     pub fn success_response<T: Serialize>(data: T) -> HttpResponse {

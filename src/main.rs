@@ -132,7 +132,7 @@ async fn main() -> std::io::Result<()> {
         "session_cleanup_runs_total",
         "Number of session cleanup runs",
     );
-    let session_cleanup_runs = IntCounter::with_opts(cleanup_runs_opts).unwrap();
+    let session_cleanup_runs = IntCounter::with_opts(cleanup_runs_opts).expect("Failed to create session_cleanup_runs metric");
     registry
         .register(Box::new(session_cleanup_runs.clone()))
         .ok();
@@ -141,7 +141,7 @@ async fn main() -> std::io::Result<()> {
         "session_cleanup_removed_total",
         "Number of sessions removed by cleanup",
     );
-    let session_cleanup_removed = IntCounter::with_opts(cleanup_removed_opts).unwrap();
+    let session_cleanup_removed = IntCounter::with_opts(cleanup_removed_opts).expect("Failed to create session_cleanup_removed metric");
     registry
         .register(Box::new(session_cleanup_removed.clone()))
         .ok();
@@ -253,8 +253,14 @@ async fn main() -> std::io::Result<()> {
                             let encoder = TextEncoder::new();
                             let metric_families = registry.gather();
                             let mut buffer = Vec::new();
-                            encoder.encode(&metric_families, &mut buffer).unwrap();
-                            let text = String::from_utf8(buffer).unwrap_or_default();
+                            if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
+                                log::error!("Failed to encode metrics: {}", e);
+                                return HttpResponse::InternalServerError().body("Failed to encode metrics");
+                            }
+                            let text = String::from_utf8(buffer).unwrap_or_else(|e| {
+                                log::error!("Failed to convert metrics to UTF-8: {}", e);
+                                "Metrics encoding error".to_string()
+                            });
                             HttpResponse::Ok()
                                 .content_type("text/plain; version=0.0.4; charset=utf-8")
                                 .body(text)
@@ -267,8 +273,14 @@ async fn main() -> std::io::Result<()> {
                             let encoder = TextEncoder::new();
                             let metric_families = registry.gather();
                             let mut buffer = Vec::new();
-                            encoder.encode(&metric_families, &mut buffer).unwrap();
-                            let text = String::from_utf8(buffer).unwrap_or_default();
+                            if let Err(e) = encoder.encode(&metric_families, &mut buffer) {
+                                log::error!("Failed to encode metrics for JSON: {}", e);
+                                return HttpResponse::InternalServerError().json(serde_json::json!({"error": "Failed to encode metrics"}));
+                            }
+                            let text = String::from_utf8(buffer).unwrap_or_else(|e| {
+                                log::error!("Failed to convert metrics to UTF-8 for JSON: {}", e);
+                                "Metrics encoding error".to_string()
+                            });
                             HttpResponse::Ok()
                                 .content_type("application/json")
                                 .json(serde_json::json!({ "metrics": text }))
