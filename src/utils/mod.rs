@@ -200,6 +200,18 @@ pub fn check_password_strength(password: &str) -> Result<(), Vec<String>> {
     }
 }
 
+/// Validation function for the validator crate
+pub fn validate_password(password: &str) -> Result<(), validator::ValidationError> {
+    let has_upper = password.chars().any(|c| c.is_uppercase());
+    let has_lower = password.chars().any(|c| c.is_lowercase());
+    let has_digit = password.chars().any(|c| c.is_numeric());
+
+    if password.len() < 8 || !has_upper || !has_lower || !has_digit {
+        return Err(validator::ValidationError::new("password_too_weak"));
+    }
+    Ok(())
+}
+
 /// Format timestamp for display
 #[allow(dead_code)]
 pub fn format_timestamp(dt: &DateTime<Utc>) -> String {

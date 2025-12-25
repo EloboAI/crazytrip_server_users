@@ -190,7 +190,7 @@ pub struct LoginRequest {
     #[validate(email(message = "Invalid email format"))]
     pub email: String,
 
-    #[validate(length(min = 8, message = "Password must be at least 8 characters"))]
+    #[validate(custom(function = "crate::utils::validate_password"))]
     pub password: String,
 }
 
@@ -203,7 +203,7 @@ pub struct RegisterRequest {
     #[validate(length(min = 3, max = 50, message = "Username must be 3-50 characters"))]
     pub username: String,
 
-    #[validate(length(min = 8, message = "Password must be at least 8 characters"))]
+    #[validate(custom(function = "crate::utils::validate_password"))]
     pub password: String,
 }
 
