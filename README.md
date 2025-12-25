@@ -275,7 +275,7 @@ WantedBy=multi-user.target
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+Este es software propietario. Todos los derechos reservados por **EloboAI**. Queda prohibida la reproducción, distribución o modificación total o parcial de este código sin autorización previa por escrito del autor.
 
 ## Development — DB & Run (local helper commands)
 
