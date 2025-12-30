@@ -232,15 +232,16 @@ pub async fn refresh_token(
         .await
     {
         Ok(response) => Ok(utils::response::success_response(response)),
-        Err(_err) => {
+        Err(err) => {
             let db_clone = Arc::clone(&user_service.db);
+            let err_msg = err.to_string();
             tokio::spawn(async move {
                 let _ = utils::log_internal_error(
                     db_clone,
                     "WARN",
                     "refresh_token",
                     "Refresh token exchange failed",
-                    Some(serde_json::json!({"error": "Internal error"})),
+                    Some(serde_json::json!({"error": err_msg})),
                     None,
                     None,
                 )

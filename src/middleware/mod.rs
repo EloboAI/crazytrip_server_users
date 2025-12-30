@@ -97,7 +97,8 @@ where
                     req.extensions_mut().insert(claims);
                     service.call(req).await
                 }
-                Err(_) => {
+                Err(e) => {
+                    log::warn!("Token validation failed: {}", e);
                     let response = HttpResponse::Unauthorized()
                         .json(serde_json::json!({"error": "Invalid or expired token"}));
                     Ok(req.into_response(response))
