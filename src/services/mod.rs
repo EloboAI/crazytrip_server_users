@@ -93,11 +93,45 @@ impl UserService {
             }
         };
 
+        // Check if account is locked
+        if let Some(locked_until) = user.locked_until {
+            if Utc::now() < locked_until {
+                let remaining_minutes = (locked_until - Utc::now()).num_minutes() + 1;
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!(
+                        "Account is temporarily locked. Try again in {} minute(s)",
+                        remaining_minutes
+                    ),
+                )));
+            }
+        }
+
         // Verify password
         if !self
             .auth
             .verify_password(&req.password, &user.password_hash)?
         {
+            // Increment login attempts on failed password
+            self.db.increment_login_attempts(&user.id).await?;
+
+            // Lock account after 5 failed attempts (progressive lockout)
+            let new_attempts = user.login_attempts + 1;
+            if new_attempts >= 5 {
+                // Progressive lockout: 15 min for first lockout, doubles each 5 attempts
+                let lockout_multiplier = (new_attempts / 5) as i64;
+                let lock_minutes = 15 * lockout_multiplier;
+                let lock_until = Utc::now() + chrono::Duration::minutes(lock_minutes);
+                self.db.lock_user_account(&user.id, lock_until).await?;
+                log::warn!(
+                    "Account locked for user {} ({}) after {} failed attempts. Locked until {:?}",
+                    user.id,
+                    user.email,
+                    new_attempts,
+                    lock_until
+                );
+            }
+
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "Invalid email or password",
@@ -111,6 +145,9 @@ impl UserService {
                 "Account is deactivated",
             )));
         }
+
+        // Reset login attempts on successful login
+        self.db.update_user_login(&user.id, ip_address).await?;
 
         // Generate tokens
         let tokens = self.auth.generate_tokens(&user)?;
