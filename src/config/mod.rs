@@ -210,6 +210,14 @@ impl AppConfig {
             ))
         })?;
 
+        // Validate JWT_SECRET minimum length for security (HS256 requires strong keys)
+        if jwt_secret.len() < 32 {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "JWT_SECRET must be at least 32 characters for adequate security",
+            )));
+        }
+
         let jwt_expiration_hours = env::var("JWT_EXPIRATION_HOURS")
             .unwrap_or_else(|_| "24".to_string())
             .parse::<i64>()
