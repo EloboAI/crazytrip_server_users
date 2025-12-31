@@ -320,12 +320,14 @@ async fn main() -> std::io::Result<()> {
                         "/user/sessions/{session_id}",
                         web::delete().to(invalidate_session),
                     )
-                    // Admin routes (would need additional role checking middleware)
-                    .route("/admin/users", web::get().to(get_all_users))
-                    .route(
-                        "/admin/users/{user_id}/deactivate",
-                        web::post().to(admin_deactivate_user),
-                    ),
+                    // TODO: Admin routes disabled until proper role-based access control is implemented
+                    // These endpoints return 501 Not Implemented, which could leak information
+                    // Uncomment once admin authentication and authorization is complete
+                    // .route("/admin/users", web::get().to(get_all_users))
+                    // .route(
+                    //     "/admin/users/{user_id}/deactivate",
+                    //     web::post().to(admin_deactivate_user),
+                    // )
             )
     })
     .bind((config.server.host.clone(), config.server.port))?
